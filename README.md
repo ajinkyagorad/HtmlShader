@@ -31,7 +31,7 @@ A WebGL shader demonstration featuring mathematical patterns, soft color palette
 2. Go to Settings → Pages in your repository
 3. Select source: "Deploy from a branch"
 4. Choose main branch and `/ (root)` folder
-5. Your site will be available at `https://username.github.io/repository-name/`
+5. Your site will be available at https://ajinkyagorad.github.io/HtmlShader/gallery.html
 
 ## 📁 Project Structure
 
@@ -197,10 +197,10 @@ This project is open source and available under the MIT License.
 
 ## 🔗 Links
 
-- **Live Demo**: [GitHub Pages URL]
-- **Repository**: [GitHub Repository URL]
-- **WebGL Documentation**: [MDN WebGL Docs]
-- **Shader Tutorials**: [ShaderToy]
+- **Live Demo**: https://ajinkyagorad.github.io/HtmlShader/gallery.html
+- **Repository**: https://github.com/ajinkyagorad/HtmlShader
+- **WebGL Documentation**: [MDN WebGL Docs](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API)
+- **Shader Tutorials**: [ShaderToy](https://www.shadertoy.com)
 
 ---
 
