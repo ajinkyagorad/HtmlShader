@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LUMINAL // Shader-Native Blog</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #020205;
+            cursor: crosshair;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+
+    <script id="vertexShader" type="x-shader/x-vertex">
+        attribute vec2 position;
+        varying vec2 v_uv;
+        void main() {
+            v_uv = position * 0.5 + 0.5;
+            gl_Position = vec4(position, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        precision highp float;
+        varying vec2 v_uv;
+        uniform float u_time;
+        uniform vec2 u_resolution;
+        uniform vec2 u_mouse;
+        uniform float u_scroll;
+
+        // --- MATH & UTILS ---
+        mat2 rot(float a) {
+            float s = sin(a), c = cos(a);
+            return mat2(c, -s, s, c);
+        }
+
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+        }
+
+        float sdBox(vec2 p, vec2 b) {
+            vec2 d = abs(p)-b;
+            return length(max(d,0.0)) + min(max(d.x,d.y),0.0);
+        }
+
+        float sdRoundedBox(vec2 p, vec2 b, vec4 r) {
+            r.xy = (p.x>0.0)?r.xy : r.zw;
+            r.x  = (p.y>0.0)?r.x  : r.y;
+            vec2 q = abs(p)-b+r.x;
+            return min(max(q.x,q.y),0.0) + length(max(q,0.0))-r.x;
+        }
+
+        // --- PROCEDURAL TYPOGRAPHY (SDF GLYPHS) ---
+        // Generates abstract "data" blocks that look like lines of text
+        float sdTextLine(vec2 p, float width, float seed) {
+            float d = 1e10;
+            int segments = 6;
+            for(int i=0; i<6; i++) {
+                float h = hash(vec2(seed, float(i)));
+                float segW = 0.02 + h * 0.08;
+                float xOff = float(i) * 0.1 - (width * 0.5);
+                d = min(d, sdRoundedBox(p - vec2(xOff, 0.0), vec2(segW, 0.004), vec4(0.002)));
+            }
+            return d;
+        }
+
+        // --- LAYOUT ENGINE ---
+        void main() {
+            // Adjust UV for aspect ratio
+            vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution) / min(u_resolution.x, u_resolution.y);
+            vec2 mouse = (u_mouse * 2.0 - u_resolution) / min(u_resolution.x, u_resolution.y);
+            
+            // Scrolling logic
+            float scroll = u_scroll * 0.002;
+            
+            // Background: Deep Galactic Gradient
+            vec3 color = mix(vec3(0.02, 0.02, 0.05), vec3(0.08, 0.05, 0.12), v_uv.y);
+            color += hash(uv + u_time) * 0.02; // Dither/Grain
+
+            // 1. SIDEBAR (Glassmorphism)
+            float sidebarX = -1.2; 
+            vec2 sUV = uv - vec2(sidebarX, 0.0);
+            float sidebarBox = sdBox(sUV, vec2(0.4, 2.0));
+            if (sidebarBox < 0.0) {
+                color = mix(color, vec3(0.12, 0.14, 0.2), 0.4);
+                // Sidebar Content (Vertical Nav Items)
+                for(int i=0; i<5; i++) {
+                    vec2 itemPos = sUV - vec2(0.0, 0.5 - float(i)*0.15);
+                    float item = sdTextLine(itemPos, 0.2, float(i)*99.0);
+                    color = mix(color, vec3(0.5, 0.7, 1.0), smoothstep(0.002, 0.0, item));
+                }
+            }
+            float sidebarBorder = smoothstep(0.01, 0.0, abs(sidebarBox) - 0.001);
+            color += sidebarBorder * vec3(0.3, 0.4, 0.6);
+
+            // 2. MAIN FEED
+            vec2 feedUV = uv - vec2(0.2, scroll);
+            
+            // Draw 10 Blog "Posts"
+            for(int i=0; i<10; i++) {
+                float yOffset = 0.8 - float(i) * 0.9;
+                vec2 pUV = feedUV - vec2(0.0, yOffset);
+                
+                // Article Card
+                float card = sdRoundedBox(pUV, vec2(0.7, 0.35), vec4(0.04));
+                
+                // Interaction: Glow on hover
+                float distToMouse = length(uv - mouse);
+                float hoverGlow = exp(-distToMouse * 8.0) * smoothstep(0.0, -0.01, card);
+                
+                // Render Card Body
+                if (card < 0.0) {
+                    float bgAlpha = 0.15 + (sin(u_time + float(i)) * 0.02);
+                    color = mix(color, vec3(0.15, 0.18, 0.25), bgAlpha);
+                    
+                    // Post Title (Thicker line)
+                    float titleLine = sdRoundedBox(pUV - vec2(-0.35, 0.2), vec2(0.25, 0.015), vec4(0.005));
+                    color = mix(color, vec3(1.0), smoothstep(0.003, 0.0, titleLine));
+                    
+                    // Post Body Text (Multiple thin lines)
+                    for(int j=0; j<4; j++) {
+                        vec2 tPos = pUV - vec2(-0.25, 0.05 - float(j)*0.06);
+                        float line = sdTextLine(tPos, 0.8, float(i*10 + j));
+                        color = mix(color, vec3(0.6, 0.65, 0.8), smoothstep(0.002, 0.0, line));
+                    }
+                    
+                    // "Read More" Button
+                    float btn = sdRoundedBox(pUV - vec2(0.45, -0.2), vec2(0.12, 0.04), vec4(0.02));
+                    color = mix(color, vec3(0.0, 0.6, 1.0), smoothstep(0.002, 0.0, btn));
+                }
+                
+                // Card Border
+                float cardBorder = smoothstep(0.005, 0.0, abs(card) - 0.002);
+                color += cardBorder * vec3(0.2, 0.3, 0.5);
+                color += hoverGlow * vec3(0.2, 0.5, 1.0);
+            }
+
+            // 3. TOP NAVIGATION BAR
+            vec2 navUV = uv - vec2(0.0, 0.9);
+            float navBar = sdBox(navUV, vec2(2.0, 0.1));
+            if (navBar < 0.0) {
+                color = mix(color, vec3(0.05, 0.05, 0.1), 0.8);
+                // "Logo"
+                float logo = sdRoundedBox(navUV - vec2(-1.2, 0.0), vec2(0.04), vec4(0.01));
+                color = mix(color, vec3(0.0, 0.8, 1.0), smoothstep(0.002, 0.0, logo));
+            }
+
+            // Vignette & Mouse Spot
+            float vignette = 1.0 - length(v_uv - 0.5) * 0.8;
+            color *= vignette;
+            
+            float mouseSpot = exp(-length(uv - mouse) * 10.0);
+            color += mouseSpot * vec3(0.05, 0.1, 0.2);
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    </script>
+
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            alert("WebGL not supported");
+        }
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vsSource = document.getElementById('vertexShader').text;
+        const fsSource = document.getElementById('fragmentShader').text;
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+        const positionLoc = gl.getAttribLocation(program, 'position');
+        const timeLoc = gl.getUniformLocation(program, 'u_time');
+        const resLoc = gl.getUniformLocation(program, 'u_resolution');
+        const mouseLoc = gl.getUniformLocation(program, 'u_mouse');
+        const scrollLoc = gl.getUniformLocation(program, 'u_scroll');
+
+        let mouseX = 0, mouseY = 0;
+        let scrollY = 0;
+        let targetScrollY = 0;
+
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = window.innerHeight - e.clientY;
+        });
+
+        window.addEventListener('wheel', (e) => {
+            targetScrollY -= e.deltaY;
+            // Bound scrolling
+            targetScrollY = Math.min(Math.max(targetScrollY, -4000), 1000);
+        });
+
+        function render(time) {
+            // Smooth scrolling interpolation
+            scrollY += (targetScrollY - scrollY) * 0.1;
+            
+            time *= 0.001;
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+            gl.useProgram(program);
+            gl.enableVertexAttribArray(positionLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+            gl.uniform1f(timeLoc, time);
+            gl.uniform2f(resLoc, canvas.width, canvas.height);
+            gl.uniform2f(mouseLoc, mouseX, mouseY);
+            gl.uniform1f(scrollLoc, scrollY);
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+    </script>
+</body>
+</html>

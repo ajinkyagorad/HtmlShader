@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mango Stack Playground - GPU Edition</title>
+    <style>
+        :root {
+            --mango-primary: #ff8200;
+            --mango-bg: #fff9f0;
+            --ui-bg: rgba(255, 255, 255, 0.85);
+            --panel-shadow: 0 10px 30px rgba(255, 130, 0, 0.15);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--mango-bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #4a3721;
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #ui-panel {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            width: 300px;
+            background: var(--ui-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: var(--panel-shadow);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            user-select: none;
+            transition: transform 0.3s ease;
+        }
+
+        #ui-panel:hover {
+            transform: translateY(-5px);
+        }
+
+        .header {
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 18px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--mango-primary);
+        }
+
+        .header p {
+            margin: 4px 0 0;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        .control-group {
+            margin-bottom: 16px;
+        }
+
+        .control-group label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        input[type=range] {
+            width: 100%;
+            height: 6px;
+            background: #e0d5c5;
+            border-radius: 3px;
+            appearance: none;
+            outline: none;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--mango-primary);
+            border-radius: 50%;
+            cursor: pointer;
+            border: 3px solid white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .footer-info {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            pointer-events: none;
+        }
+
+        .badge {
+            background: var(--mango-primary);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 8px;
+        }
+
+        .fps-counter {
+            font-family: monospace;
+            font-size: 12px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="glCanvas"></canvas>
+        
+        <div class="footer-info">
+            <div class="badge">MANGO HYBRID v3.0</div>
+            <div class="fps-counter" id="fps">FPS: 60</div>
+        </div>
+
+        <div id="ui-panel">
+            <div class="header">
+                <h1>Mango Hybrid</h1>
+                <p>Geometric Stack Experiment</p>
+            </div>
+            
+            <div class="control-group">
+                <label>Hue Shift <span>Color</span></label>
+                <input type="range" id="param-hue" min="0" max="1" step="0.01" value="0.05">
+            </div>
+
+            <div class="control-group">
+                <label>Vividness <span>Saturation</span></label>
+                <input type="range" id="param-sat" min="0" max="2.0" step="0.01" value="1.0">
+            </div>
+
+            <div class="control-group">
+                <label>Motion Speed <span>Pace</span></label>
+                <input type="range" id="param-speed" min="0.1" max="4.0" step="0.01" value="1.0">
+            </div>
+
+            <div class="control-group">
+                <label>Layer Depth <span>Complexity</span></label>
+                <input type="range" id="param-layers" min="0.1" max="0.6" step="0.05" value="0.5">
+            </div>
+        </div>
+    </div>
+
+    <script id="vertexShader" type="x-shader/x-vertex">
+        attribute vec2 position;
+        varying vec2 v_uv;
+        void main() {
+            v_uv = position * 0.5 + 0.5;
+            gl_Position = vec4(position, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        precision highp float;
+        varying vec2 v_uv;
+        uniform float u_time;
+        uniform vec2 u_resolution;
+        
+        // Control Uniforms
+        uniform float u_hue;
+        uniform float u_sat;
+        uniform float u_speed;
+        uniform float u_layers; // Range control from original logic
+
+        // IQ Palette helper for Mango colors
+        vec3 palette(float t) {
+            vec3 a = vec3(0.5, 0.5, 0.5);
+            vec3 b = vec3(0.5, 0.5, 0.5);
+            vec3 c = vec3(1.0, 1.0, 1.0);
+            vec3 d = vec3(u_hue, u_hue + 0.1, u_hue + 0.2);
+            return a + b * cos(6.28318 * (c * t + d));
+        }
+
+        void main() {
+            vec2 r = u_resolution;
+            vec2 p = v_uv * r + 0.5;
+
+            vec3 h = vec3(0.0);
+            vec3 c = vec3(1.0, 0.98, 0.95); // Background cream
+            float A = 0.0;
+            float l = 0.0;
+            float a = 0.0;
+            float time = u_time * u_speed;
+
+            // Original iteration logic (downwards stack)
+            for (float i = 0.6; i > 0.05; i -= 0.1) {
+                // Break if we exceed the user-defined layer depth
+                if (i < (0.7 - u_layers)) continue;
+
+                // Original math for rotation and oscillation
+                a = (time + i) * 4.0;
+                a -= sin(a);
+                a -= sin(a);
+
+                vec2 t = cos(a / 4.0 + vec2(0.0, 1.5708)); // Using 1.5708 for cleaner rotation
+                mat2 R = mat2(t.x, t.y, -t.y, t.x);
+
+                // Coordinate normalization
+                vec2 u = (p * 2.0 - r) / r.y / 0.5;
+                
+                // Rounded box distance field (Original logic)
+                mat2 Rt = mat2(R[0][0], R[1][0], R[0][1], R[1][1]);
+                vec2 ur = Rt * u;
+                u -= R * clamp(ur, -vec2(i), vec2(i));
+
+                l = max(length(u), 0.1);
+                
+                // Original alpha mask logic
+                A = min((l - 0.1) * r.y / 8.0, 1.0);
+                
+                // Combined coloring: Mango palette + original shading logic
+                float colorIdx = i + u_hue;
+                h = palette(colorIdx);
+                
+                // Saturation adjustment
+                vec3 gray = vec3(dot(h, vec3(0.299, 0.587, 0.114)));
+                h = mix(gray, h, u_sat);
+                
+                // Original color mixing formula
+                c = mix(h, c, A) * mix(vec3(1.0), h + A * u.y / l / 2.0, 0.15 / l);
+            }
+
+            // Soft tone mapping and final output
+            vec3 result = (exp(c) - exp(-c)) / (exp(c) + exp(-c));
+            
+            // Add a slight mango vignette
+            result *= 1.1 - 0.2 * length(v_uv - 0.5);
+            
+            gl_FragColor = vec4(result, 1.0);
+        }
+    </script>
+
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+        const fpsDisplay = document.getElementById('fps');
+
+        if (!gl) {
+            document.body.innerHTML = 'WebGL not supported';
+        }
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vsSource = document.getElementById('vertexShader').text;
+        const fsSource = document.getElementById('fragmentShader').text;
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+
+        const positionLocation = gl.getAttribLocation(program, 'position');
+        const timeLocation = gl.getUniformLocation(program, 'u_time');
+        const resolutionLocation = gl.getUniformLocation(program, 'u_resolution');
+        const hueLocation = gl.getUniformLocation(program, 'u_hue');
+        const satLocation = gl.getUniformLocation(program, 'u_sat');
+        const speedLocation = gl.getUniformLocation(program, 'u_speed');
+        const layersLocation = gl.getUniformLocation(program, 'u_layers');
+
+        let frameCount = 0;
+        let lastFpsUpdate = 0;
+
+        function resize() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        function render(now) {
+            frameCount++;
+            if (now - lastFpsUpdate > 1000) {
+                fpsDisplay.textContent = `FPS: ${frameCount}`;
+                frameCount = 0;
+                lastFpsUpdate = now;
+            }
+
+            const time = now * 0.001; 
+            gl.useProgram(program);
+
+            gl.enableVertexAttribArray(positionLocation);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+            gl.uniform1f(timeLocation, time);
+            gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+            gl.uniform1f(hueLocation, parseFloat(document.getElementById('param-hue').value));
+            gl.uniform1f(satLocation, parseFloat(document.getElementById('param-sat').value));
+            gl.uniform1f(speedLocation, parseFloat(document.getElementById('param-speed').value));
+            gl.uniform1f(layersLocation, parseFloat(document.getElementById('param-layers').value));
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

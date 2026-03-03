@@ -1,0 +1,4 @@
+# GitHub Pages configuration
+theme: jekyll-theme-minimal
+title: Shader Gallery
+description: Interactive WebGL shader experiments and demonstrations

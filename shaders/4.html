@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mango Pulse - Liquid Flow</title>
+    <style>
+        :root {
+            --mango-core: #ff5e00;
+            --mango-skin: #ffb400;
+            --ui-glass: rgba(18, 12, 5, 0.65);
+            --accent: #ffd900;
+            --fluid-anim: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0a0805;
+            font-family: 'Inter', -apple-system, sans-serif;
+            color: #eee;
+            user-select: none;
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: block;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        /* SVG Gooey Filter Container - Everything inside feels like liquid */
+        #ui-fluid-layer {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            padding: 40px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            pointer-events: none;
+            /* The secret sauce: gooey filter applied to the whole UI container */
+            filter: url('#goo');
+        }
+
+        .liquid-blob {
+            pointer-events: auto;
+            background: var(--ui-glass);
+            backdrop-filter: blur(20px);
+            border-radius: 50px;
+            padding: 20px 40px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: transform 0.4s var(--fluid-anim), background 0.3s ease;
+            width: fit-content;
+        }
+
+        .liquid-blob:hover {
+            transform: scale(1.05) translateY(-5px);
+            background: rgba(255, 94, 0, 0.15);
+            border-color: rgba(255, 180, 0, 0.3);
+        }
+
+        .brand h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 900;
+            letter-spacing: -1px;
+            background: linear-gradient(45deg, var(--mango-core), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .brand p {
+            margin: 5px 0 0;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            color: var(--mango-skin);
+            opacity: 0.7;
+        }
+
+        /* Bottom Controls Wrapper */
+        #controls-wrapper {
+            align-self: flex-end;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .control-panel {
+            pointer-events: auto;
+            background: var(--ui-glass);
+            backdrop-filter: blur(20px);
+            padding: 25px;
+            border-radius: 40px;
+            width: 280px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.5s var(--fluid-anim);
+        }
+
+        .control-panel:hover {
+            background: rgba(255, 120, 0, 0.1);
+            transform: translateX(-10px);
+        }
+
+        .control-item {
+            margin-bottom: 15px;
+        }
+        
+        .control-item:last-child { margin-bottom: 0; }
+
+        .control-item label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            margin-bottom: 10px;
+            color: var(--mango-skin);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        input[type=range] {
+            width: 100%;
+            appearance: none;
+            background: rgba(255,255,255,0.08);
+            height: 6px;
+            border-radius: 10px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            border: 4px solid var(--mango-core);
+            box-shadow: 0 0 10px rgba(255, 94, 0, 0.4);
+            transition: transform 0.2s var(--fluid-anim);
+        }
+
+        input[type=range]:active::-webkit-slider-thumb {
+            transform: scale(1.4);
+        }
+
+        .stats-blob {
+            font-family: monospace;
+            font-size: 10px;
+            color: var(--mango-skin);
+            opacity: 0.6;
+            padding: 10px 20px;
+            border-radius: 20px;
+            background: rgba(0,0,0,0.3);
+            margin-top: 10px;
+        }
+
+        /* Hide the SVG filter visually */
+        .svg-filters {
+            position: absolute;
+            visibility: hidden;
+            width: 0;
+            height: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <!-- The Background Shader Canvas -->
+        <canvas id="glCanvas"></canvas>
+        
+        <!-- The Fluid UI Layer -->
+        <div id="ui-fluid-layer">
+            <div class="liquid-blob brand">
+                <h1>Mango Pulse</h1>
+                <p>Viscous Flow Lab</p>
+            </div>
+
+            <div id="controls-wrapper">
+                <div class="control-panel">
+                    <div class="control-item">
+                        <label>Viscosity <span>Liquid</span></label>
+                        <input type="range" id="val-viscosity" min="0.1" max="2.5" step="0.01" value="0.8">
+                    </div>
+                    <div class="control-item">
+                        <label>Pulp <span>Texture</span></label>
+                        <input type="range" id="val-grain" min="0.0" max="1.0" step="0.01" value="0.3">
+                    </div>
+                    <div class="control-item">
+                        <label>Glow <span>Heat</span></label>
+                        <input type="range" id="val-heat" min="0.5" max="3.0" step="0.1" value="1.2">
+                    </div>
+                </div>
+                <div class="liquid-blob stats-blob" id="fps">FPS: 60</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gooey Filter Definition -->
+    <svg class="svg-filters" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="goo">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="blur" />
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -9" result="goo" />
+                <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+            </filter>
+        </defs>
+    </svg>
+
+    <!-- SHADERS -->
+    <script id="vertexShader" type="x-shader/x-vertex">
+        attribute vec2 position;
+        varying vec2 v_uv;
+        void main() {
+            v_uv = position * 0.5 + 0.5;
+            gl_Position = vec4(position, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        precision highp float;
+        varying vec2 v_uv;
+        uniform float u_time;
+        uniform vec2 u_res;
+        uniform float u_viscosity;
+        uniform float u_grain;
+        uniform float u_heat;
+
+        vec3 hash(vec3 p) {
+            p = vec3(dot(p, vec3(127.1, 311.7, 74.7)),
+                     dot(p, vec3(269.5, 183.3, 246.1)),
+                     dot(p, vec3(113.5, 271.9, 124.6)));
+            return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
+        }
+
+        float noise(vec3 p) {
+            vec3 i = floor(p);
+            vec3 f = fract(p);
+            vec3 u = f * f * (3.0 - 2.0 * f);
+            return mix(mix(mix(dot(hash(i + vec3(0, 0, 0)), f - vec3(0, 0, 0)),
+                               dot(hash(i + vec3(1, 0, 0)), f - vec3(1, 0, 0)), u.x),
+                           mix(dot(hash(i + vec3(0, 1, 0)), f - vec3(0, 1, 0)),
+                               dot(hash(i + vec3(1, 1, 0)), f - vec3(1, 1, 0)), u.x), u.y),
+                       mix(mix(dot(hash(i + vec3(0, 0, 1)), f - vec3(0, 0, 1)),
+                               dot(hash(i + vec3(1, 0, 1)), f - vec3(1, 0, 1)), u.x),
+                           mix(dot(hash(i + vec3(0, 1, 1)), f - vec3(0, 1, 1)),
+                               dot(hash(i + vec3(1, 1, 1)), f - vec3(1, 1, 1)), u.x), u.y), u.z);
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy * 2.0 - u_res.xy) / min(u_res.x, u_res.y);
+            float time = u_time * 0.4;
+
+            for(float i = 1.0; i < 4.0; i++) {
+                uv.x += (0.35 / i) * sin(i * 2.5 * uv.y + time * u_viscosity + i);
+                uv.y += (0.35 / i) * cos(i * 2.5 * uv.x + time * u_viscosity + i);
+            }
+
+            float d = length(uv);
+            float core = smoothstep(1.0, 0.0, d);
+            
+            float n = noise(vec3(uv * 3.5, time * 0.3));
+            float n2 = noise(vec3(uv * 10.0, time * 0.6));
+            float pulp = mix(n, n2, u_grain);
+
+            vec3 colorA = vec3(1.0, 0.35, 0.0); 
+            vec3 colorB = vec3(1.0, 0.85, 0.1); 
+            vec3 colorC = vec3(0.08, 0.04, 0.01); 
+
+            float blend = smoothstep(-0.4, 0.4, n);
+            vec3 liquid = mix(colorA, colorB, blend);
+            liquid *= (1.0 + pulp * 0.3) * u_heat;
+
+            vec3 final = mix(colorC, liquid, core * 0.95);
+            
+            // Specular highlight based on noise gradient
+            float spec = pow(max(0.0, n), 8.0) * 0.4;
+            final += spec * colorB;
+
+            // Simple vignette
+            final *= 1.2 - length(v_uv - 0.5) * 1.8;
+
+            gl_FragColor = vec4(final, 1.0);
+        }
+    </script>
+
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+        const fpsDisplay = document.getElementById('fps');
+
+        if (!gl) {
+            document.body.innerHTML = '<div style="padding: 50px;">WebGL required.</div>';
+        }
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            return shader;
+        }
+
+        const vsSource = document.getElementById('vertexShader').text;
+        const fsSource = document.getElementById('fragmentShader').text;
+        const program = gl.createProgram();
+        gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vsSource));
+        gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fsSource));
+        gl.linkProgram(program);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+        const posLoc = gl.getAttribLocation(program, 'position');
+        const timeLoc = gl.getUniformLocation(program, 'u_time');
+        const resLoc = gl.getUniformLocation(program, 'u_res');
+        const viscLoc = gl.getUniformLocation(program, 'u_viscosity');
+        const grainLoc = gl.getUniformLocation(program, 'u_grain');
+        const heatLoc = gl.getUniformLocation(program, 'u_heat');
+
+        function resize() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        let frameCount = 0;
+        let lastTime = 0;
+
+        function render(now) {
+            frameCount++;
+            if (now - lastTime >= 1000) {
+                fpsDisplay.textContent = `FPS: ${frameCount}`;
+                frameCount = 0;
+                lastTime = now;
+            }
+
+            gl.useProgram(program);
+            gl.enableVertexAttribArray(posLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+            gl.uniform1f(timeLoc, now * 0.001);
+            gl.uniform2f(resLoc, canvas.width, canvas.height);
+            gl.uniform1f(viscLoc, parseFloat(document.getElementById('val-viscosity').value));
+            gl.uniform1f(grainLoc, parseFloat(document.getElementById('val-grain').value));
+            gl.uniform1f(heatLoc, parseFloat(document.getElementById('val-heat').value));
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+
+        // Subtle parallax effect on the liquid UI layer based on mouse
+        document.addEventListener('mousemove', (e) => {
+            const moveX = (e.clientX - window.innerWidth / 2) * 0.01;
+            const moveY = (e.clientY - window.innerHeight / 2) * 0.01;
+            document.getElementById('ui-fluid-layer').style.transform = `translate(${moveX}px, ${moveY}px)`;
+        });
+    </script>
+</body>
+</html>

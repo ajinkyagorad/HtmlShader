@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LUMINAL // Shader-Native Blog</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #020205;
+            cursor: crosshair;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+
+    <script id="vertexShader" type="x-shader/x-vertex">
+        attribute vec2 position;
+        varying vec2 v_uv;
+        void main() {
+            v_uv = position * 0.5 + 0.5;
+            gl_Position = vec4(position, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        precision highp float;
+        varying vec2 v_uv;
+        uniform float u_time;
+        uniform vec2 u_resolution;
+        uniform vec2 u_mouse;
+        uniform float u_scroll;
+        uniform float u_mouse_down;
+        uniform vec2 u_click_pos;
+
+        // --- MATH & UTILS ---
+        mat2 rot(float a) {
+            float s = sin(a), c = cos(a);
+            return mat2(c, -s, s, c);
+        }
+
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+        }
+
+        float sdBox(vec2 p, vec2 b) {
+            vec2 d = abs(p)-b;
+            return length(max(d,0.0)) + min(max(d.x,d.y),0.0);
+        }
+
+        float sdRoundedBox(vec2 p, vec2 b, vec4 r) {
+            r.xy = (p.x>0.0)?r.xy : r.zw;
+            r.x  = (p.y>0.0)?r.x  : r.y;
+            vec2 q = abs(p)-b+r.x;
+            return min(max(q.x,q.y),0.0) + length(max(q,0.0))-r.x;
+        }
+
+        // --- PROCEDURAL TYPOGRAPHY ---
+        float sdTextLine(vec2 p, float width, float seed) {
+            float d = 1e10;
+            for(int i=0; i<6; i++) {
+                float h = hash(vec2(seed, float(i)));
+                float segW = 0.02 + h * 0.08;
+                float xOff = float(i) * 0.1 - (width * 0.5);
+                d = min(d, sdRoundedBox(p - vec2(xOff, 0.0), vec2(segW, 0.003), vec4(0.002)));
+            }
+            return d;
+        }
+
+        // --- RENDER ENGINE ---
+        void main() {
+            vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution) / min(u_resolution.x, u_resolution.y);
+            vec2 mouse = (u_mouse * 2.0 - u_resolution) / min(u_resolution.x, u_resolution.y);
+            vec2 click = (u_click_pos * 2.0 - u_resolution) / min(u_resolution.x, u_resolution.y);
+            
+            float scroll = u_scroll * 0.002;
+            
+            // Background Layer
+            vec3 color = mix(vec3(0.01, 0.01, 0.03), vec3(0.05, 0.04, 0.08), v_uv.y);
+            color += hash(uv + u_time) * 0.015;
+
+            // Global Click Ripple
+            float ripple = exp(-length(uv - click) * 5.0) * u_mouse_down * 0.15;
+            color += ripple * vec3(0.4, 0.7, 1.0);
+
+            // 1. SIDEBAR
+            float sidebarWidth = 0.45;
+            float sidebarX = -1.2; 
+            vec2 sUV = uv - vec2(sidebarX, 0.0);
+            float sidebarBox = sdBox(sUV, vec2(sidebarWidth, 2.0));
+            
+            if (sidebarBox < 0.0) {
+                // Glass Material logic
+                float glassNoise = hash(uv * 100.0) * 0.01;
+                color = mix(color, vec3(0.1, 0.12, 0.18), 0.5);
+                color += glassNoise;
+                
+                // Sidebar Nav Items
+                for(int i=0; i<6; i++) {
+                    vec2 itemPos = sUV - vec2(-0.1, 0.6 - float(i)*0.18);
+                    float item = sdTextLine(itemPos, 0.15, float(i)*42.0);
+                    float hover = smoothstep(0.1, 0.0, length(sUV - vec2(0.0, 0.6 - float(i)*0.18 + mouse.y*0.05)));
+                    color = mix(color, vec3(0.4, 0.6, 1.0) * (1.0 + hover), smoothstep(0.002, 0.0, item));
+                }
+            }
+            color += smoothstep(0.01, 0.0, abs(sidebarBox) - 0.001) * vec3(0.3, 0.4, 0.6);
+
+            // 2. MAIN FEED
+            vec2 feedUV = uv - vec2(0.3, scroll);
+            
+            for(int i=0; i<8; i++) {
+                float yOffset = 0.8 - float(i) * 0.95;
+                vec2 pUV = feedUV - vec2(0.0, yOffset);
+                
+                // Interaction math
+                float distToMouse = length(uv - mouse);
+                float hoverMask = smoothstep(0.5, 0.0, distToMouse);
+                
+                // Article Card Material
+                float card = sdRoundedBox(pUV, vec2(0.75, 0.4), vec4(0.05));
+                
+                if (card < 0.0) {
+                    // Physical shading: Card Depress on Click
+                    float clickDepth = smoothstep(0.5, 0.0, length(uv - mouse)) * u_mouse_down * 0.02;
+                    pUV += clickDepth; // Visual "sink" effect
+                    
+                    // Material Base
+                    vec3 cardColor = vec3(0.1, 0.12, 0.18);
+                    float fresnel = pow(1.0 + card, 4.0);
+                    color = mix(color, cardColor, 0.3 + hoverMask * 0.2);
+                    
+                    // Highlights (Specular)
+                    float spec = exp(-length(pUV - (mouse - vec2(0.3, yOffset + scroll))) * 4.0);
+                    color += spec * vec3(0.2, 0.3, 0.5) * 0.3;
+                    
+                    // Typography Rendering
+                    float title = sdRoundedBox(pUV - vec2(-0.35, 0.25), vec2(0.3, 0.02), vec4(0.005));
+                    color = mix(color, vec3(1.0), smoothstep(0.003, 0.0, title));
+                    
+                    for(int j=0; j<4; j++) {
+                        vec2 tPos = pUV - vec2(-0.2, 0.08 - float(j)*0.07);
+                        float line = sdTextLine(tPos, 0.9, float(i*13 + j));
+                        color = mix(color, vec3(0.6, 0.7, 0.9), smoothstep(0.002, 0.0, line));
+                    }
+                    
+                    // BUTTON (Read More)
+                    vec2 btnPos = pUV - vec2(0.5, -0.25);
+                    float btn = sdRoundedBox(btnPos, vec2(0.15, 0.05), vec4(0.02));
+                    
+                    // Button Click logic
+                    float isOverBtn = smoothstep(0.05, 0.0, btn);
+                    float btnClick = isOverBtn * u_mouse_down;
+                    
+                    vec3 btnColor = mix(vec3(0.1, 0.4, 0.8), vec3(0.0, 0.8, 1.0), btnClick);
+                    color = mix(color, btnColor, smoothstep(0.002, 0.0, btn));
+                    
+                    // Button bevel/highlight
+                    color += smoothstep(0.01, 0.0, abs(btn) - 0.002) * 0.5 * vec3(1.0);
+                }
+                
+                // Card Border & Glow
+                float cardBorder = smoothstep(0.005, 0.0, abs(card) - 0.002);
+                color += cardBorder * vec3(0.2, 0.4, 0.7) * (1.0 + hoverMask);
+            }
+
+            // 3. TOP BAR
+            vec2 navUV = uv - vec2(0.0, 0.9);
+            float navBar = sdBox(navUV, vec2(2.0, 0.1));
+            if (navBar < 0.0) {
+                color = mix(color, vec3(0.02, 0.03, 0.08), 0.9);
+                float logo = sdRoundedBox(navUV - vec2(-1.2, 0.0), vec2(0.05, 0.04), vec4(0.01));
+                color = mix(color, vec3(0.0, 1.0, 0.8), smoothstep(0.002, 0.0, logo));
+                color += exp(-length(navUV - vec2(-1.2, 0.0)) * 10.0) * vec3(0.0, 0.5, 0.4);
+            }
+
+            // Final Post-Process
+            float vignette = smoothstep(1.8, 0.5, length(uv));
+            color *= vignette;
+            
+            // Cursor light
+            color += exp(-length(uv - mouse) * 15.0) * vec3(0.1, 0.2, 0.4);
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    </script>
+
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) { alert("WebGL not supported"); }
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            return shader;
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, document.getElementById('vertexShader').text));
+        gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, document.getElementById('fragmentShader').text));
+        gl.linkProgram(program);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+        const positionLoc = gl.getAttribLocation(program, 'position');
+        const uniforms = {
+            time: gl.getUniformLocation(program, 'u_time'),
+            res: gl.getUniformLocation(program, 'u_resolution'),
+            mouse: gl.getUniformLocation(program, 'u_mouse'),
+            scroll: gl.getUniformLocation(program, 'u_scroll'),
+            mouseDown: gl.getUniformLocation(program, 'u_mouse_down'),
+            clickPos: gl.getUniformLocation(program, 'u_click_pos')
+        };
+
+        let mouseX = 0, mouseY = 0;
+        let clickX = 0, clickY = 0;
+        let isMouseDown = 0;
+        let scrollY = 0, targetScrollY = 0;
+
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = window.innerHeight - e.clientY;
+        });
+
+        window.addEventListener('mousedown', (e) => {
+            isMouseDown = 1.0;
+            clickX = e.clientX;
+            clickY = window.innerHeight - e.clientY;
+        });
+
+        window.addEventListener('mouseup', () => {
+            isMouseDown = 0.0;
+        });
+
+        window.addEventListener('wheel', (e) => {
+            targetScrollY -= e.deltaY;
+            targetScrollY = Math.min(Math.max(targetScrollY, -3500), 500);
+        });
+
+        function render(time) {
+            scrollY += (targetScrollY - scrollY) * 0.1;
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.useProgram(program);
+            gl.enableVertexAttribArray(positionLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+            gl.uniform1f(uniforms.time, time * 0.001);
+            gl.uniform2f(uniforms.res, canvas.width, canvas.height);
+            gl.uniform2f(uniforms.mouse, mouseX, mouseY);
+            gl.uniform2f(uniforms.clickPos, clickX, clickY);
+            gl.uniform1f(uniforms.mouseDown, isMouseDown);
+            gl.uniform1f(uniforms.scroll, scrollY);
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+    </script>
+</body>
+</html>

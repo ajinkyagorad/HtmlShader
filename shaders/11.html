@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LUMINAL // Liquid & Refractive UI</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            cursor: none; /* We draw a custom GPU cursor */
+            font-family: sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #loading {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: #00ffcc;
+            letter-spacing: 4px;
+            font-size: 12px;
+            text-transform: uppercase;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">Compiling Universe...</div>
+    <canvas id="glCanvas"></canvas>
+
+    <script id="vertexShader" type="x-shader/x-vertex">
+        attribute vec2 position;
+        varying vec2 v_uv;
+        void main() {
+            v_uv = position * 0.5 + 0.5;
+            gl_Position = vec4(position, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        precision highp float;
+        
+        varying vec2 v_uv;
+        
+        uniform float u_time;
+        uniform vec2 u_resolution;
+        uniform vec2 u_mouse;       // Smoothed mouse
+        uniform vec2 u_mouse_vel;   // Mouse velocity
+        uniform float u_scroll;     // Smoothed scroll
+        uniform vec4 u_click;       // x, y, time_since_click, is_down
+
+        // --- MATH & DISTANCE FIELDS ---
+        mat2 rot(float a) {
+            float s = sin(a), c = cos(a);
+            return mat2(c, -s, s, c);
+        }
+
+        float hash12(vec2 p) {
+            vec3 p3  = fract(vec3(p.xyx) * .1031);
+            p3 += dot(p3, p3.yzx + 33.33);
+            return fract((p3.x + p3.y) * p3.z);
+        }
+
+        // --- PROCEDURAL NOISE (For Heat & Fire) ---
+        float noise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            float a = hash12(i);
+            float b = hash12(i + vec2(1.0, 0.0));
+            float c = hash12(i + vec2(0.0, 1.0));
+            float d = hash12(i + vec2(1.0, 1.0));
+            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        // Fractional Brownian Motion
+        float fbm(vec2 p) {
+            float v = 0.0;
+            float a = 0.5;
+            mat2 rotMatrix = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
+            for (int i = 0; i < 5; ++i) {
+                v += a * noise(p);
+                p = rotMatrix * p * 2.0 + vec2(100.0);
+                a *= 0.5;
+            }
+            return v;
+        }
+
+        float smin(float a, float b, float k) {
+            float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+            return mix(b, a, h) - k * h * (1.0 - h);
+        }
+
+        float sdBox(vec2 p, vec2 b) {
+            vec2 d = abs(p)-b;
+            return length(max(d,0.0)) + min(max(d.x,d.y),0.0);
+        }
+
+        float sdRoundedBox(vec2 p, vec2 b, vec4 r) {
+            r.xy = (p.x>0.0)?r.xy : r.zw;
+            r.x  = (p.y>0.0)?r.x  : r.y;
+            vec2 q = abs(p)-b+r.x;
+            return min(max(q.x,q.y),0.0) + length(max(q,0.0))-r.x;
+        }
+
+        float sdCircle(vec2 p, float r) {
+            return length(p) - r;
+        }
+
+        // --- PROCEDURAL TYPOGRAPHY ---
+        float sdTextLine(vec2 p, float width, float seed) {
+            float d = 1e10;
+            for(int i=0; i<5; i++) {
+                float h = hash12(vec2(seed, float(i)));
+                float segW = 0.03 + h * 0.1;
+                float xOff = float(i) * 0.15 - (width * 0.5) + segW;
+                d = min(d, sdRoundedBox(p - vec2(xOff, 0.0), vec2(segW, 0.004), vec4(0.002)));
+            }
+            return d;
+        }
+
+        // --- BACKGROUND GENERATOR ---
+        vec3 renderBackground(vec2 uv) {
+            // A deep, fluid cyber-grid
+            vec2 gridUV = fract(uv * 10.0 + u_time * 0.1) - 0.5;
+            float grid = smoothstep(0.45, 0.5, abs(gridUV.x)) + smoothstep(0.45, 0.5, abs(gridUV.y));
+            
+            vec3 color = mix(vec3(0.02, 0.01, 0.05), vec3(0.05, 0.08, 0.15), length(uv));
+            color += grid * vec3(0.05, 0.1, 0.2) * (1.0 - length(uv)*0.5);
+            
+            // Floating organic particles
+            float noiseVal = hash12(floor(uv * 5.0 - u_time * 0.5));
+            color += smoothstep(0.4, 0.5, noiseVal) * 0.1 * vec3(0.0, 0.8, 1.0);
+            
+            return color;
+        }
+
+        void main() {
+            // Normalize coordinates (-aspect to aspect, -1 to 1)
+            vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution) / u_resolution.y;
+            vec2 mouse = (u_mouse * 2.0 - u_resolution) / u_resolution.y;
+            vec2 clickPos = (u_click.xy * 2.0 - u_resolution) / u_resolution.y;
+            
+            // Aspect ratio multiplier for proper sizing
+            float aspect = u_resolution.x / u_resolution.y;
+            
+            // 1. GLOBAL DISTORTIONS & THERMODYNAMICS
+            vec2 distortedUV = uv;
+            
+            float mouseDist = length(uv - mouse);
+            vec2 mouseDir = normalize(uv - mouse);
+            
+            // A. Magnetic pull towards cursor
+            distortedUV -= mouseDir * (0.05 * exp(-mouseDist * 5.0)) * u_click.w; // Pulls in on click
+            
+            // B. Heat Haze (Thermodynamic distortion rising from hot cursor)
+            vec2 hazeUV = uv;
+            hazeUV.y -= u_time * 1.5; // Flow upwards
+            float heatMask = smoothstep(0.3, 0.0, abs(uv.x - mouse.x)) * smoothstep(-0.1, 0.8, uv.y - mouse.y);
+            float haze = (fbm(hazeUV * 8.0) - 0.5) * 0.06 * heatMask;
+            distortedUV.x += haze; // Refract the UI along the X axis above the heat source
+            
+            // C. Boiling Effect (Violent fluid mechanics near touch)
+            float boilIntensity = exp(-mouseDist * 12.0) * u_click.w; // Only active near mouse on down
+            vec2 boilWarp = vec2(
+                fbm(uv * 25.0 + vec2(u_time * 20.0, 0.0)),
+                fbm(uv * 25.0 - vec2(0.0, u_time * 15.0))
+            ) - 0.5;
+            distortedUV += boilWarp * boilIntensity * 0.2; // Physically warp the UI
+            
+            // D. Click Shockwave
+            float clickTime = u_click.z;
+            if(clickTime > 0.0 && clickTime < 2.0) {
+                float wave = sin((length(uv - clickPos) - clickTime * 2.0) * 20.0);
+                float waveMask = exp(-clickTime * 3.0) * exp(-length(uv - clickPos) * 2.0);
+                distortedUV += normalize(uv - clickPos) * wave * waveMask * 0.05;
+            }
+
+            // Base Background using Distorted UVs
+            vec3 color = renderBackground(distortedUV);
+
+            // 2. LIQUID SIDEBAR (Gooey Topology)
+            // The sidebar reaches out to merge with the cursor if it gets close
+            float sidebarWidth = 0.5;
+            float sidebarX = -aspect + sidebarWidth - 0.1;
+            
+            vec2 sidebarUV = uv;
+            float rawSidebar = sdBox(sidebarUV - vec2(sidebarX, 0.0), vec2(sidebarWidth, 2.0));
+            float cursorBubble = sdCircle(uv - mouse, 0.15 + u_click.w * 0.05);
+            
+            // *RADICAL CONCEPT*: Smooth minimum merges the geometric sidebar with the free-floating cursor
+            float liquidSidebar = smin(rawSidebar, cursorBubble, 0.3);
+            
+            if (liquidSidebar < 0.0) {
+                // Frosted glass effect for sidebar
+                vec3 glassColor = renderBackground(distortedUV * 1.05 + hash12(uv)*0.02);
+                color = mix(glassColor, vec3(0.1, 0.15, 0.25), 0.6);
+                
+                // Edge glow
+                float edge = smoothstep(-0.02, 0.0, liquidSidebar);
+                color += vec3(0.2, 0.5, 1.0) * (1.0 - edge) * 0.5;
+            }
+
+            // 3. INFINITE DOMAIN FEED (Zero-cost list rendering)
+            // Instead of looping, we fold space mathematically to create infinite cards
+            vec2 feedUV = distortedUV;
+            feedUV.x -= 0.2; // Shift feed to the right
+            feedUV.y += u_scroll * 0.005; // Apply scroll
+            
+            float cardSpacing = 0.8;
+            // Identify which card we are currently evaluating
+            float cardID = floor((feedUV.y + cardSpacing * 0.5) / cardSpacing);
+            // Create local coordinates for the card (-0.5 to 0.5 range)
+            vec2 localCardUV = vec2(feedUV.x, mod(feedUV.y + cardSpacing * 0.5, cardSpacing) - cardSpacing * 0.5);
+            
+            // Card Parallax/Tilt based on mouse proximity to card center
+            vec2 cardCenterGlobal = vec2(0.2, cardID * cardSpacing - u_scroll * 0.005);
+            vec2 toMouse = mouse - cardCenterGlobal;
+            float distToCard = length(toMouse);
+            
+            // Warp the local card space slightly for a 3D parallax feel
+            localCardUV -= toMouse * 0.05 * exp(-distToCard * 2.0);
+            
+            float cardSDF = sdRoundedBox(localCardUV, vec2(0.6, 0.3), vec4(0.04));
+            
+            // Shadow
+            float shadow = smoothstep(0.0, 0.2, cardSDF);
+            color = mix(color, vec3(0.0), (1.0 - shadow) * 0.5 * exp(-distToCard));
+
+            if (cardSDF < 0.0) {
+                // Glass/Refractive Material
+                vec3 refrColor = renderBackground(distortedUV + localCardUV * 0.1);
+                
+                // Base card color varying by ID
+                vec3 tint = mix(vec3(0.05, 0.08, 0.12), vec3(0.08, 0.05, 0.1), hash12(vec2(cardID)));
+                
+                // Hover highlight
+                float hoverIntensity = exp(-distToCard * 3.0);
+                tint += vec3(0.1, 0.2, 0.3) * hoverIntensity;
+                
+                color = mix(refrColor, tint, 0.85);
+                
+                // Inner Specular highlight
+                float spec = smoothstep(0.5, 0.0, length(localCardUV - toMouse*0.3));
+                color += spec * vec3(0.1, 0.2, 0.3);
+
+                // --- CONTENT WITHIN CARD ---
+                float seed = cardID * 13.37;
+                
+                // Title
+                float title = sdRoundedBox(localCardUV - vec2(-0.3, 0.15), vec2(0.2, 0.02), vec4(0.005));
+                color = mix(color, vec3(1.0), smoothstep(0.005, 0.0, title));
+                
+                // Body Text lines
+                for(int j=0; j<3; j++) {
+                    vec2 tPos = localCardUV - vec2(-0.2, 0.02 - float(j)*0.06);
+                    float line = sdTextLine(tPos, 0.7, seed + float(j));
+                    color = mix(color, vec3(0.6, 0.7, 0.8), smoothstep(0.003, 0.0, line));
+                }
+                
+                // Action Button
+                vec2 btnUV = localCardUV - vec2(0.4, -0.15);
+                // Magnetic button pulls slightly towards mouse
+                vec2 btnToMouse = (localCardUV - toMouse) - vec2(0.4, -0.15);
+                float btnHover = exp(-length(btnToMouse) * 10.0);
+                btnUV -= btnToMouse * btnHover * 0.2; // physical shift
+                
+                float btnSDF = sdRoundedBox(btnUV, vec2(0.12, 0.04), vec4(0.02));
+                vec3 btnColor = mix(vec3(0.1, 0.3, 0.8), vec3(0.0, 0.8, 1.0), btnHover + u_click.w * btnHover);
+                color = mix(color, btnColor, smoothstep(0.005, 0.0, btnSDF));
+                
+                // Card Border (Neon Edge)
+                float border = smoothstep(0.01, 0.0, abs(cardSDF) - 0.002);
+                color += border * vec3(0.3, 0.6, 1.0) * (0.2 + hoverIntensity);
+            }
+
+            // 4. FIRE & STEAM (Procedural Plume Element)
+            float dx = uv.x - mouse.x;
+            float dy = uv.y - mouse.y;
+            
+            // Cone shape for the plume
+            float cone = smoothstep(0.15 + max(0.0, dy) * 0.4, 0.0, abs(dx));
+            float verticalMask = smoothstep(0.8, 0.0, dy) * smoothstep(-0.05, 0.1, dy + 0.05);
+            
+            vec2 fireUV = vec2(dx, dy) * 5.0;
+            fireUV.y -= u_time * 4.0;
+            
+            // Layered noise for fire
+            float fNoise1 = fbm(fireUV - vec2(0.0, u_time));
+            float fNoise2 = fbm(fireUV * 2.0 - fNoise1 * 2.0);
+            
+            float flame = fNoise2 * cone * verticalMask;
+            
+            // Colorize flame mapping noise intensity
+            vec3 steamCol = vec3(0.2, 0.4, 0.6) * 0.6; // Dark/Blueish steam
+            vec3 fireCol  = vec3(1.0, 0.3, 0.0);       // Orange fire
+            vec3 coreCol  = vec3(1.0, 0.9, 0.4);       // White-hot core
+            
+            vec3 plumeColor = mix(steamCol, fireCol, smoothstep(0.2, 0.5, flame));
+            plumeColor = mix(plumeColor, coreCol, smoothstep(0.5, 0.8, flame));
+            
+            // Add volumetric fire onto final composition
+            color += plumeColor * flame * 2.5;
+
+            // Boiling Bubbles (Emitted violently on click)
+            if (u_click.w > 0.0) {
+                float bNoise = fbm(uv * 40.0 - vec2(0.0, u_time * 8.0));
+                float bMask = smoothstep(0.65, 0.8, bNoise) * exp(-mouseDist * 15.0);
+                color += vec3(1.0, 0.8, 0.2) * bMask * 3.0; // Hot glowing bubbles
+            }
+
+            // 5. CUSTOM CURSOR & LIGHTING
+            float cursorRing = abs(sdCircle(uv - mouse, 0.02)) - 0.002;
+            float cursorDot = sdCircle(uv - mouse, 0.005);
+            
+            // Cursor adapts to heat
+            vec3 cursorColor = mix(vec3(1.0) - color, vec3(1.0, 0.2, 0.0), u_click.w); 
+            vec3 dotColor = mix(vec3(0.0, 1.0, 0.8), vec3(1.0, 0.9, 0.4), u_click.w + heatMask*0.5);
+            
+            color = mix(color, cursorColor, smoothstep(0.003, 0.0, cursorRing));
+            color = mix(color, dotColor, smoothstep(0.002, 0.0, cursorDot));
+
+            // Vignette
+            color *= smoothstep(2.0, 0.5, length(uv));
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    </script>
+
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+        const loading = document.getElementById('loading');
+
+        if (!gl) { 
+            loading.innerText = "WebGL not supported on this device.";
+            loading.style.color = "#ff3333";
+        }
+
+        // --- SHADER COMPILATION ---
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const program = gl.createProgram();
+        const vs = createShader(gl, gl.VERTEX_SHADER, document.getElementById('vertexShader').text);
+        const fs = createShader(gl, gl.FRAGMENT_SHADER, document.getElementById('fragmentShader').text);
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Program link failed:', gl.getProgramInfoLog(program));
+        }
+
+        // --- GEOMETRY SETUP ---
+        // A single full-screen quad (two triangles)
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1.0, -1.0,  
+             1.0, -1.0,  
+            -1.0,  1.0,  
+             1.0,  1.0
+        ]), gl.STATIC_DRAW);
+
+        const positionLoc = gl.getAttribLocation(program, 'position');
+        
+        // --- UNIFORMS ---
+        const uniforms = {
+            time: gl.getUniformLocation(program, 'u_time'),
+            res: gl.getUniformLocation(program, 'u_resolution'),
+            mouse: gl.getUniformLocation(program, 'u_mouse'),
+            mouseVel: gl.getUniformLocation(program, 'u_mouse_vel'),
+            scroll: gl.getUniformLocation(program, 'u_scroll'),
+            click: gl.getUniformLocation(program, 'u_click') // x, y, time, isDown
+        };
+
+        // --- STATE & PHYSICS VARIABLES ---
+        let state = {
+            mouseX: window.innerWidth / 2,
+            mouseY: window.innerHeight / 2,
+            targetMouseX: window.innerWidth / 2,
+            targetMouseY: window.innerHeight / 2,
+            mouseVelX: 0,
+            mouseVelY: 0,
+            scrollY: 0,
+            targetScrollY: 0,
+            clickX: 0,
+            clickY: 0,
+            clickTime: -1, // -1 means inactive
+            isMouseDown: 0
+        };
+
+        // --- EVENT LISTENERS ---
+        window.addEventListener('mousemove', (e) => {
+            state.targetMouseX = e.clientX;
+            state.targetMouseY = window.innerHeight - e.clientY; // WebGL uses bottom-left origin
+        });
+
+        window.addEventListener('mousedown', (e) => {
+            state.isMouseDown = 1.0;
+            state.clickX = e.clientX;
+            state.clickY = window.innerHeight - e.clientY;
+            state.clickTime = 0.0; // Reset animation timer
+        });
+
+        window.addEventListener('mouseup', () => {
+            state.isMouseDown = 0.0;
+        });
+
+        window.addEventListener('wheel', (e) => {
+            state.targetScrollY -= e.deltaY;
+            // Unclamped infinite scroll is possible because of domain repetition!
+        }, { passive: true });
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        });
+
+        // Initialize sizing
+        window.dispatchEvent(new Event('resize'));
+        
+        // Hide loading text once compiled
+        setTimeout(() => { loading.style.opacity = '0'; }, 300);
+
+        // --- RENDER LOOP ---
+        let lastTime = 0;
+        
+        function render(time) {
+            const dt = (time - lastTime) * 0.001; // Delta time in seconds
+            lastTime = time;
+
+            // 1. Physics Calculations (Spring smoothing for organic feel)
+            const springStrength = 15.0; // Higher = stiffer spring
+            const friction = 0.8;
+            
+            // Calculate velocity based on target vs current
+            let dx = state.targetMouseX - state.mouseX;
+            let dy = state.targetMouseY - state.mouseY;
+            
+            state.mouseX += dx * 10.0 * dt;
+            state.mouseY += dy * 10.0 * dt;
+            
+            state.mouseVelX = dx;
+            state.mouseVelY = dy;
+
+            // Scroll smoothing
+            state.scrollY += (state.targetScrollY - state.scrollY) * 10.0 * dt;
+
+            // Click animation timing
+            if (state.clickTime >= 0.0) {
+                state.clickTime += dt;
+                // Stop calculating shockwave after 2 seconds
+                if (state.clickTime > 2.0) state.clickTime = -1.0; 
+            }
+
+            // 2. WebGL State Update
+            gl.useProgram(program);
+            
+            gl.enableVertexAttribArray(positionLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+            // 3. Send Uniforms
+            gl.uniform1f(uniforms.time, time * 0.001);
+            gl.uniform2f(uniforms.res, canvas.width, canvas.height);
+            gl.uniform2f(uniforms.mouse, state.mouseX, state.mouseY);
+            gl.uniform2f(uniforms.mouseVel, state.mouseVelX, state.mouseVelY);
+            gl.uniform1f(uniforms.scroll, state.scrollY);
+            gl.uniform4f(uniforms.click, state.clickX, state.clickY, state.clickTime, state.isMouseDown);
+
+            // 4. Draw
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

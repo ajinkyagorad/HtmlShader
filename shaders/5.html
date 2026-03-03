@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mango Pulse - Full Liquid Journal</title>
+    <style>
+        :root {
+            --mango-core: #ff5e00;
+            --mango-skin: #ffb400;
+            --ui-glass: rgba(18, 12, 5, 0.65);
+            --accent: #ffd900;
+            --fluid-anim: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0a0805;
+            font-family: 'Inter', -apple-system, sans-serif;
+            color: #eee;
+            user-select: none;
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: block;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        /* SVG Gooey Filter Container */
+        #ui-fluid-layer {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            padding: 40px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            pointer-events: none;
+            filter: url('#goo');
+            overflow-y: auto;
+            scrollbar-width: none;
+        }
+        #ui-fluid-layer::-webkit-scrollbar { display: none; }
+
+        /* Shared Blob Style */
+        .liquid-blob {
+            pointer-events: auto;
+            background: var(--ui-glass);
+            backdrop-filter: blur(20px);
+            border-radius: 40px;
+            padding: 20px 30px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: transform 0.4s var(--fluid-anim), background 0.3s ease, margin 0.4s var(--fluid-anim);
+            width: fit-content;
+            margin-bottom: 15px;
+        }
+
+        .liquid-blob:hover {
+            transform: scale(1.02) translateY(-5px);
+            background: rgba(255, 94, 0, 0.15);
+            border-color: rgba(255, 180, 0, 0.3);
+        }
+
+        /* Layout Architecture */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            width: 100%;
+            margin-bottom: 60px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 40px;
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .brand h1 {
+            margin: 0;
+            font-size: 32px;
+            font-weight: 900;
+            letter-spacing: -1.5px;
+            background: linear-gradient(45deg, var(--mango-core), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .brand p {
+            margin: 5px 0 0;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            color: var(--mango-skin);
+            opacity: 0.8;
+        }
+
+        .nav-links { display: flex; gap: 10px; }
+        .nav-item { font-size: 12px; font-weight: 600; text-transform: uppercase; padding: 12px 24px; cursor: pointer; }
+
+        /* Blog Section */
+        .blog-feed { display: flex; flex-direction: column; gap: 20px; }
+        .post-card { width: 100%; padding: 35px; border-radius: 50px; }
+        .post-card .meta { font-size: 10px; color: var(--mango-skin); text-transform: uppercase; margin-bottom: 12px; }
+        .post-card h2 { margin: 0 0 15px 0; font-size: 24px; font-weight: 800; color: #fff; }
+        .post-card p { margin: 0; font-size: 15px; line-height: 1.7; color: rgba(255,255,255,0.7); }
+
+        /* Featured Content */
+        .featured-hero {
+            grid-column: 1 / -1;
+            width: 100%;
+            padding: 50px;
+            border-radius: 60px;
+            background: linear-gradient(135deg, rgba(255, 94, 0, 0.2), rgba(255, 217, 0, 0.05));
+            border: 1px solid rgba(255, 180, 0, 0.2);
+            margin-bottom: 40px;
+        }
+
+        .featured-hero h2 { font-size: 42px; margin: 0 0 15px 0; letter-spacing: -1px; }
+
+        /* Sidebar Elements */
+        .sidebar { display: flex; flex-direction: column; gap: 20px; }
+        .lab-stat-card { width: 100%; padding: 25px; border-radius: 35px; }
+        .lab-stat-card h3 { font-size: 12px; text-transform: uppercase; margin: 0 0 15px 0; opacity: 0.6; }
+        
+        .stat-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-family: monospace; font-size: 13px; }
+        .stat-value { color: var(--mango-skin); }
+
+        .newsletter-blob { width: 100%; padding: 30px; border-radius: 40px; }
+        .newsletter-blob input {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 12px 20px;
+            border-radius: 20px;
+            color: white;
+            width: 100%;
+            box-sizing: border-box;
+            margin-top: 15px;
+            outline: none;
+        }
+
+        /* Bottom Controls Wrapper */
+        #bottom-area {
+            position: fixed;
+            bottom: 40px;
+            right: 40px;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            align-items: flex-end;
+            filter: url('#goo');
+        }
+
+        .control-panel {
+            pointer-events: auto;
+            background: var(--ui-glass);
+            backdrop-filter: blur(20px);
+            padding: 25px;
+            border-radius: 40px;
+            width: 260px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.5s var(--fluid-anim);
+        }
+
+        .control-item { margin-bottom: 15px; }
+        .control-item:last-child { margin-bottom: 0; }
+        .control-item label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            margin-bottom: 8px;
+            color: var(--mango-skin);
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        input[type=range] {
+            width: 100%;
+            appearance: none;
+            background: rgba(255,255,255,0.08);
+            height: 4px;
+            border-radius: 10px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #fff;
+            border-radius: 50%;
+            border: 3px solid var(--mango-core);
+            box-shadow: 0 0 10px rgba(255, 94, 0, 0.4);
+        }
+
+        .stats-blob { font-family: monospace; font-size: 10px; color: var(--mango-skin); padding: 10px 20px; border-radius: 20px; }
+
+        .footer-blob { margin: 80px auto 40px; padding: 20px 60px; text-align: center; font-size: 11px; opacity: 0.5; letter-spacing: 2px; }
+
+        .svg-filters { position: absolute; visibility: hidden; width: 0; height: 0; }
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <canvas id="glCanvas"></canvas>
+        
+        <div id="ui-fluid-layer">
+            <!-- Header -->
+            <div class="header">
+                <div class="liquid-blob brand">
+                    <h1>Mango Pulse</h1>
+                    <p>Viscous Flow Lab</p>
+                </div>
+
+                <div class="nav-links">
+                    <div class="liquid-blob nav-item">Journal</div>
+                    <div class="liquid-blob nav-item">Theory</div>
+                    <div class="liquid-blob nav-item">Archive</div>
+                    <div class="liquid-blob nav-item">Lab</div>
+                </div>
+            </div>
+
+            <!-- Main Layout -->
+            <div class="main-content">
+                
+                <!-- Hero Section -->
+                <div class="liquid-blob featured-hero">
+                    <div class="meta">Breaking Discovery • Organic Simulation</div>
+                    <h2>The Entropy of Sweetness</h2>
+                    <p>New experimental data suggests that liquid viscosity in the digital realm can be mapped directly to tactile user engagement metrics. We explore the physics of "Stickiness."</p>
+                </div>
+
+                <!-- Feed -->
+                <div class="blog-feed">
+                    <div class="liquid-blob post-card">
+                        <div class="meta">March 03, 2026 • Physics</div>
+                        <h2>Defining Viscosity in Digital Spaces</h2>
+                        <p>How motion curves and color gradients simulate the tactile sensation of fruit pulp in a virtual environment.</p>
+                    </div>
+
+                    <div class="liquid-blob post-card">
+                        <div class="meta">February 28, 2026 • Design</div>
+                        <h2>The Color of Sunlight</h2>
+                        <p>Exploring the spectrum between #FF5E00 and #FFB400 to achieve the perfect ripe mango glow.</p>
+                    </div>
+
+                    <div class="liquid-blob post-card">
+                        <div class="meta">February 14, 2026 • Lab Notes</div>
+                        <h2>Sub-Surface Scattering</h2>
+                        <p>Integrating noise-based refraction to mimic the density of organic liquids under high intensity heat.</p>
+                    </div>
+
+                    <div class="liquid-blob post-card">
+                        <div class="meta">February 05, 2026 • Research</div>
+                        <h2>Kinetic Typography</h2>
+                        <p>Why text should flow like water when the user interacts with high-viscosity backgrounds.</p>
+                    </div>
+                </div>
+
+                <!-- Sidebar -->
+                <div class="sidebar">
+                    <div class="liquid-blob lab-stat-card">
+                        <h3>Pulse Readings</h3>
+                        <div class="stat-row"><span>Viscosity Index</span><span class="stat-value" id="stat-visc">0.80</span></div>
+                        <div class="stat-row"><span>Heat Level</span><span class="stat-value" id="stat-heat">1.20</span></div>
+                        <div class="stat-row"><span>Pulp Grain</span><span class="stat-value" id="stat-grain">0.30</span></div>
+                        <div class="stat-row"><span>Fluid State</span><span class="stat-value">Stable</span></div>
+                    </div>
+
+                    <div class="liquid-blob lab-stat-card">
+                        <h3>Trending Topics</h3>
+                        <p style="font-size: 13px; margin: 5px 0;">#ViscousUI</p>
+                        <p style="font-size: 13px; margin: 5px 0;">#OrganicMath</p>
+                        <p style="font-size: 13px; margin: 5px 0;">#MangoGradient</p>
+                    </div>
+
+                    <div class="liquid-blob newsletter-blob">
+                        <h3>Subscribe to the Pulse</h3>
+                        <p style="font-size: 12px; opacity: 0.7;">Get bi-weekly laboratory updates on organic digital design.</p>
+                        <input type="text" placeholder="your@email.com">
+                    </div>
+
+                    <div class="liquid-blob lab-stat-card">
+                        <h3>System Health</h3>
+                        <div style="height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+                            <div style="width: 85%; height: 100%; background: var(--mango-core);"></div>
+                        </div>
+                        <p style="font-size: 10px; margin-top: 10px; opacity: 0.5;">CPU Fluid Simulation: 85% Load</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="liquid-blob footer-blob">
+                &copy; 2026 MANGO PULSE EXPERIMENTAL LAB • BUILT WITH LIQUID CSS
+            </div>
+        </div>
+
+        <!-- Floating Controls Area -->
+        <div id="bottom-area">
+            <div class="control-panel">
+                <div class="control-item">
+                    <label>Fluidity <span>Motion</span></label>
+                    <input type="range" id="val-viscosity" min="0.1" max="2.5" step="0.01" value="0.8">
+                </div>
+                <div class="control-item">
+                    <label>Density <span>Pulp</span></label>
+                    <input type="range" id="val-grain" min="0.0" max="1.0" step="0.01" value="0.3">
+                </div>
+                <div class="control-item">
+                    <label>Heat <span>Glow</span></label>
+                    <input type="range" id="val-heat" min="0.5" max="3.0" step="0.1" value="1.2">
+                </div>
+            </div>
+            <div class="liquid-blob stats-blob" id="fps">FPS: 60</div>
+        </div>
+    </div>
+
+    <!-- Gooey Filter Definition -->
+    <svg class="svg-filters" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <filter id="goo">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="blur" />
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -10" result="goo" />
+                <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+            </filter>
+        </defs>
+    </svg>
+
+    <script id="vertexShader" type="x-shader/x-vertex">
+        attribute vec2 position;
+        varying vec2 v_uv;
+        void main() {
+            v_uv = position * 0.5 + 0.5;
+            gl_Position = vec4(position, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        precision highp float;
+        varying vec2 v_uv;
+        uniform float u_time;
+        uniform vec2 u_res;
+        uniform float u_viscosity;
+        uniform float u_grain;
+        uniform float u_heat;
+
+        vec3 hash(vec3 p) {
+            p = vec3(dot(p, vec3(127.1, 311.7, 74.7)),
+                     dot(p, vec3(269.5, 183.3, 246.1)),
+                     dot(p, vec3(113.5, 271.9, 124.6)));
+            return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
+        }
+
+        float noise(vec3 p) {
+            vec3 i = floor(p);
+            vec3 f = fract(p);
+            vec3 u = f * f * (3.0 - 2.0 * f);
+            return mix(mix(mix(dot(hash(i + vec3(0, 0, 0)), f - vec3(0, 0, 0)),
+                               dot(hash(i + vec3(1, 0, 0)), f - vec3(1, 0, 0)), u.x),
+                           mix(dot(hash(i + vec3(0, 1, 0)), f - vec3(0, 1, 0)),
+                               dot(hash(i + vec3(1, 1, 0)), f - vec3(1, 1, 0)), u.x), u.y),
+                       mix(mix(dot(hash(i + vec3(0, 0, 1)), f - vec3(0, 0, 1)),
+                               dot(hash(i + vec3(1, 0, 1)), f - vec3(1, 0, 1)), u.x),
+                           mix(dot(hash(i + vec3(0, 1, 1)), f - vec3(0, 1, 1)),
+                               dot(hash(i + vec3(1, 1, 1)), f - vec3(1, 1, 1)), u.x), u.y), u.z);
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy * 2.0 - u_res.xy) / min(u_res.x, u_res.y);
+            float time = u_time * 0.4;
+
+            for(float i = 1.0; i < 4.0; i++) {
+                uv.x += (0.35 / i) * sin(i * 2.5 * uv.y + time * u_viscosity + i);
+                uv.y += (0.35 / i) * cos(i * 2.5 * uv.x + time * u_viscosity + i);
+            }
+
+            float d = length(uv);
+            float core = smoothstep(1.0, 0.0, d);
+            
+            float n = noise(vec3(uv * 3.5, time * 0.3));
+            float n2 = noise(vec3(uv * 10.0, time * 0.6));
+            float pulp = mix(n, n2, u_grain);
+
+            vec3 colorA = vec3(1.0, 0.35, 0.0); 
+            vec3 colorB = vec3(1.0, 0.85, 0.1); 
+            vec3 colorC = vec3(0.08, 0.04, 0.01); 
+
+            float blend = smoothstep(-0.4, 0.4, n);
+            vec3 liquid = mix(colorA, colorB, blend);
+            liquid *= (1.0 + pulp * 0.3) * u_heat;
+
+            vec3 final = mix(colorC, liquid, core * 0.95);
+            float spec = pow(max(0.0, n), 8.0) * 0.4;
+            final += spec * colorB;
+            final *= 1.2 - length(v_uv - 0.5) * 1.8;
+
+            gl_FragColor = vec4(final, 1.0);
+        }
+    </script>
+
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+        const fpsDisplay = document.getElementById('fps');
+        const statVisc = document.getElementById('stat-visc');
+        const statHeat = document.getElementById('stat-heat');
+        const statGrain = document.getElementById('stat-grain');
+
+        if (!gl) {
+            document.body.innerHTML = 'WebGL required.';
+        }
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            return shader;
+        }
+
+        const vsSource = document.getElementById('vertexShader').text;
+        const fsSource = document.getElementById('fragmentShader').text;
+        const program = gl.createProgram();
+        gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vsSource));
+        gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fsSource));
+        gl.linkProgram(program);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+        const posLoc = gl.getAttribLocation(program, 'position');
+        const timeLoc = gl.getUniformLocation(program, 'u_time');
+        const resLoc = gl.getUniformLocation(program, 'u_res');
+        const viscLoc = gl.getUniformLocation(program, 'u_viscosity');
+        const grainLoc = gl.getUniformLocation(program, 'u_grain');
+        const heatLoc = gl.getUniformLocation(program, 'u_heat');
+
+        function resize() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        let frameCount = 0;
+        let lastTime = 0;
+
+        function render(now) {
+            frameCount++;
+            if (now - lastTime >= 1000) {
+                fpsDisplay.textContent = `FPS: ${frameCount}`;
+                frameCount = 0;
+                lastTime = now;
+            }
+
+            const v = parseFloat(document.getElementById('val-viscosity').value);
+            const g = parseFloat(document.getElementById('val-grain').value);
+            const h = parseFloat(document.getElementById('val-heat').value);
+
+            // Update UI Stats
+            statVisc.innerText = v.toFixed(2);
+            statGrain.innerText = g.toFixed(2);
+            statHeat.innerText = h.toFixed(2);
+
+            gl.useProgram(program);
+            gl.enableVertexAttribArray(posLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+            gl.uniform1f(timeLoc, now * 0.001);
+            gl.uniform2f(resLoc, canvas.width, canvas.height);
+            gl.uniform1f(viscLoc, v);
+            gl.uniform1f(grainLoc, g);
+            gl.uniform1f(heatLoc, h);
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+
+        // Interactive Parallax
+        document.addEventListener('mousemove', (e) => {
+            const moveX = (e.clientX - window.innerWidth / 2) * 0.015;
+            const moveY = (e.clientY - window.innerHeight / 2) * 0.015;
+            // Only apply transform if screen is large enough
+            if (window.innerWidth > 768) {
+                const header = document.querySelector('.header');
+                const main = document.querySelector('.main-content');
+                header.style.transform = `translate(${moveX * 0.5}px, ${moveY * 0.5}px)`;
+                main.style.transform = `translate(${moveX}px, ${moveY}px)`;
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LUMINAL // Rebirth</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            cursor: none; /* Custom shader cursor */
+            font-family: sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #loading {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: #4aff80;
+            letter-spacing: 4px;
+            font-size: 12px;
+            text-transform: uppercase;
+            pointer-events: none;
+            transition: opacity 0.5s;
+            text-shadow: 0 0 10px rgba(74, 255, 128, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">Sowing the Seeds...</div>
+    <canvas id="glCanvas"></canvas>
+
+    <script id="vertexShader" type="x-shader/x-vertex">
+        attribute vec2 position;
+        varying vec2 v_uv;
+        void main() {
+            v_uv = position * 0.5 + 0.5;
+            gl_Position = vec4(position, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        precision highp float;
+        
+        varying vec2 v_uv;
+        
+        uniform float u_time;
+        uniform vec2 u_resolution;
+        uniform vec2 u_mouse;       
+        uniform vec4 u_click;       // x, y, time_since_click, is_down
+
+        // --- MATH & NOISE FIELDS ---
+        mat2 rot(float a) {
+            float s = sin(a), c = cos(a);
+            return mat2(c, -s, s, c);
+        }
+
+        float hash12(vec2 p) {
+            vec3 p3  = fract(vec3(p.xyx) * .1031);
+            p3 += dot(p3, p3.yzx + 33.33);
+            return fract((p3.x + p3.y) * p3.z);
+        }
+
+        float valueNoise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            float a = hash12(i);
+            float b = hash12(i + vec2(1.0, 0.0));
+            float c = hash12(i + vec2(0.0, 1.0));
+            float d = hash12(i + vec2(1.0, 1.0));
+            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        // Fractal Brownian Motion for terrain
+        float fbm(vec2 p) {
+            float f = 0.0;
+            float amp = 0.5;
+            for(int i = 0; i < 4; i++) {
+                f += amp * valueNoise(p);
+                p = p * 2.0 + vec2(12.3, 4.5);
+                amp *= 0.5;
+            }
+            return f;
+        }
+
+        // --- TERRAIN GENERATION ---
+        // Base low-frequency height for the raymarcher SDF
+        float getBaseHeight(vec2 p) {
+            return fbm(p * 1.5) * 0.4;
+        }
+
+        // High-frequency detail added in the normal map step for grass
+        float getDetailedHeight(vec2 p, float vitality) {
+            float base = getBaseHeight(p);
+            
+            // Wind moving across the field
+            vec2 wind = vec2(sin(u_time * 1.5 + p.y * 2.0), cos(u_time * 1.5 + p.x * 2.0)) * 0.05;
+            float blades = valueNoise((p + wind) * 40.0);
+            
+            // Natural patches of growth
+            float density = smoothstep(0.3, 0.7, fbm(p * 3.0)); 
+            
+            // Rejuvenation makes it dense everywhere
+            density = clamp(density + vitality * 1.2, 0.0, 1.0); 
+            
+            float heightMult = 0.5 + vitality * 1.0; 
+            
+            return base + (blades * density * heightMult * 0.15);
+        }
+
+        // Soft shadows using raymarching
+        float getShadow(vec3 ro, vec3 rd) {
+            float res = 1.0;
+            float t = 0.05;
+            for(int i = 0; i < 16; i++) {
+                vec3 p = ro + rd * t;
+                float h = p.y - getBaseHeight(p.xz);
+                if(h < 0.001) return 0.1; // Hard shadow hit
+                res = min(res, 6.0 * h / t); // Soft shadow spread
+                t += max(0.02, h);
+            }
+            return clamp(res, 0.1, 1.0);
+        }
+
+        // --- SKY & ENVIRONMENT ---
+        vec3 getSky(vec3 rd, vec3 lightDir) {
+            float sunDot = max(dot(rd, lightDir), 0.0);
+            vec3 moonDir = normalize(vec3(-lightDir.x, -lightDir.y, -lightDir.z));
+            float moonDot = max(dot(rd, moonDir), 0.0);
+            
+            // Sky gradients
+            vec3 daySky = mix(vec3(0.5, 0.7, 0.9), vec3(0.1, 0.4, 0.8), max(rd.y, 0.0));
+            vec3 nightSky = mix(vec3(0.05, 0.08, 0.15), vec3(0.01, 0.02, 0.05), max(rd.y, 0.0));
+            
+            vec3 sky = mix(nightSky, daySky, smoothstep(-0.2, 0.2, lightDir.y));
+            
+            // Sunset hues
+            vec3 sunset = mix(vec3(0.9, 0.4, 0.1), vec3(1.0, 0.7, 0.3), pow(sunDot, 4.0));
+            float sunsetMask = smoothstep(-0.3, 0.2, lightDir.y) * smoothstep(0.6, 0.1, lightDir.y);
+            sky += sunset * sunsetMask * (1.0 - max(rd.y, 0.0));
+            
+            // Sun Disk & Glare
+            sky += vec3(1.0, 0.9, 0.7) * smoothstep(0.998, 0.999, sunDot) * smoothstep(-0.1, 0.1, lightDir.y);
+            sky += vec3(1.0, 0.6, 0.2) * pow(sunDot, 12.0) * smoothstep(-0.1, 0.2, lightDir.y);
+            
+            // Moon Disk & Glow
+            sky += vec3(0.8, 0.9, 1.0) * smoothstep(0.998, 0.999, moonDot) * smoothstep(-0.1, 0.1, moonDir.y);
+            sky += vec3(0.3, 0.5, 0.8) * pow(moonDot, 10.0) * smoothstep(-0.1, 0.1, moonDir.y);
+            
+            // Stars
+            float stars = pow(valueNoise(rd.xy * 200.0), 15.0) * 150.0;
+            sky += vec3(stars) * smoothstep(0.1, -0.1, lightDir.y);
+            
+            return sky;
+        }
+
+        // ACES Tone Mapping
+        vec3 ACESFilm(vec3 x) {
+            float a = 2.51; float b = 0.03; float c = 2.43; float d = 0.59; float e = 0.14;
+            return clamp((x*(a*x+b))/(x*(c*x+d)+e), 0.0, 1.0);
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution) / u_resolution.y;
+            vec2 mouseUV = (u_mouse * 2.0 - u_resolution) / u_resolution.y;
+            
+            // --- TIME & CELESTIAL MECHANICS ---
+            float dayCycle = u_time * 0.15; // Speed of day/night
+            vec3 lightDir = normalize(vec3(cos(dayCycle)*1.5, sin(dayCycle), sin(dayCycle)*0.5 + 0.5));
+            bool isNight = lightDir.y < 0.0;
+            
+            // --- CAMERA SETUP ---
+            vec3 ro = vec3(sin(u_time * 0.1) * 0.2, 0.8 + sin(u_time * 0.15) * 0.03, 0.0); // Gentle bob
+            vec3 rd = normalize(vec3(uv, 1.0));
+            mat2 pitch = rot(-0.45); // Tilt looking down at the ground
+            rd.yz = pitch * rd.yz;
+            
+            // --- MOUSE & CLICK WORLD PROJECTION ---
+            // Where on the ground did the user click?
+            vec2 clickUV = (u_click.xy * 2.0 - u_resolution) / u_resolution.y;
+            vec3 c_rd = normalize(vec3(clickUV, 1.0));
+            c_rd.yz = pitch * c_rd.yz;
+            
+            vec3 clickWorld = vec3(1000.0);
+            if(c_rd.y < -0.01) {
+                float t_click = -ro.y / c_rd.y;
+                clickWorld = ro + c_rd * t_click;
+            }
+            
+            // Where is the mouse currently pointing?
+            vec3 m_rd = normalize(vec3(mouseUV, 1.0));
+            m_rd.yz = pitch * m_rd.yz;
+            vec3 mouseWorld = vec3(1000.0);
+            if(m_rd.y < -0.01) {
+                float t_mouse = -ro.y / m_rd.y;
+                mouseWorld = ro + m_rd * t_mouse;
+            }
+
+            // --- RAYMARCHING THE TERRAIN ---
+            float t = 0.1;
+            float maxT = 20.0;
+            vec3 p;
+            bool hit = false;
+            
+            for(int i = 0; i < 70; i++) {
+                p = ro + rd * t;
+                float h = p.y - getBaseHeight(p.xz);
+                if(h < 0.002 * t) { hit = true; break; }
+                if(t > maxT) break;
+                t += h * 0.6; // Step forward
+            }
+            
+            vec3 color = vec3(0.0);
+            
+            if(hit) {
+                // --- REJUVENATION LOGIC ---
+                float clickTime = u_click.z;
+                float distToClick = length(p.xz - clickWorld.xz);
+                
+                // Expanding wave
+                float waveRadius = clickTime * 3.0;
+                float wave = smoothstep(waveRadius + 0.3, waveRadius, distToClick) * smoothstep(waveRadius - 0.6, waveRadius, distToClick);
+                
+                // Area that has been rejuvenated
+                float vitality = smoothstep(waveRadius + 0.3, waveRadius - 0.5, distToClick) * exp(-clickTime * 0.08);
+                if(u_click.w < 0.0 && u_click.z < 0.0) vitality = 0.0; // No click active
+                
+                // Mouse acts as a local hovering light/life source
+                float mouseDist = length(p.xz - mouseWorld.xz);
+                float hoverLife = exp(-mouseDist * 3.0) * 0.6;
+                vitality = max(vitality, hoverLife);
+                
+                // --- HIGH RES NORMALS ---
+                vec2 eps = vec2(0.005, 0.0);
+                float h0 = getDetailedHeight(p.xz, vitality);
+                float hx = getDetailedHeight(p.xz - eps.xy, vitality);
+                float hz = getDetailedHeight(p.xz - eps.yx, vitality);
+                vec3 normal = normalize(vec3(h0 - hx, eps.x, h0 - hz));
+                
+                // --- MATERIALS & LIGHTING ---
+                vec3 dirt = vec3(0.18, 0.13, 0.08);
+                vec3 deadGrass = vec3(0.4, 0.35, 0.15);
+                vec3 lushGrass = mix(vec3(0.1, 0.6, 0.1), vec3(0.2, 0.8, 0.3), fbm(p.xz * 15.0));
+                
+                float grassMask = smoothstep(0.3, 0.7, fbm(p.xz * 3.0));
+                float currentVitality = clamp(grassMask + vitality, 0.0, 1.0);
+                
+                vec3 albedo = mix(dirt, mix(deadGrass, lushGrass, vitality * 0.8 + 0.2), currentVitality);
+                
+                // Add tiny flowers in rejuvenated areas
+                float flowers = smoothstep(0.85, 0.95, valueNoise(p.xz * 60.0)) * vitality;
+                albedo = mix(albedo, vec3(0.9, 0.5, 1.0), flowers);
+                
+                // Diffuse and Ambient
+                float diff = max(dot(normal, lightDir), 0.0);
+                float shadow = isNight ? 0.0 : getShadow(p, lightDir);
+                
+                vec3 sunLightCol = mix(vec3(1.0, 0.4, 0.1), vec3(1.0, 0.9, 0.8), smoothstep(0.0, 0.5, lightDir.y));
+                vec3 ambientCol = mix(vec3(0.05, 0.1, 0.2), vec3(0.3, 0.4, 0.5), max(lightDir.y, 0.0));
+                
+                // Translucency (light shining through grass blades)
+                float backLight = max(dot(normal, normalize(vec3(lightDir.x, 0.0, lightDir.z))), 0.0);
+                float translucency = pow(backLight, 3.0) * currentVitality * 0.4;
+                
+                color = albedo * (diff * shadow * sunLightCol + ambientCol);
+                color += lushGrass * translucency * sunLightCol * shadow; // Glowing grass
+                
+                // Magic glow from the rejuvenation wave
+                float waveGlow = wave * exp(-clickTime * 0.2);
+                color += vec3(0.2, 1.0, 0.5) * waveGlow * 1.5;
+                
+                // Cursor hovering light
+                color += vec3(0.3, 0.9, 0.6) * exp(-mouseDist * 5.0) * 0.4;
+                
+                // --- FIREFLIES / SPORES ON THE GROUND ---
+                if (isNight || vitality > 0.1) {
+                    float ffNoise = valueNoise(p.xz * 20.0 - u_time * 0.5);
+                    if(ffNoise > 0.8) {
+                        float blink = sin(u_time * 4.0 + p.x * 50.0) * 0.5 + 0.5;
+                        float ffMask = max(1.0 - smoothstep(-0.2, 0.1, lightDir.y), vitality);
+                        color += vec3(0.6, 1.0, 0.3) * smoothstep(0.8, 1.0, ffNoise) * blink * ffMask * 3.0;
+                    }
+                }
+
+                // Fog blending to sky
+                float fog = 1.0 - exp(-t * 0.15);
+                color = mix(color, getSky(rd, lightDir), fog);
+                
+            } else {
+                // Hit the sky
+                color = getSky(rd, lightDir);
+            }
+
+            // --- 2D SCREEN-SPACE MAGICAL PARTICLES ---
+            vec2 particleUV = uv * 3.0;
+            particleUV.y += u_time * 0.15;
+            particleUV.x += sin(u_time * 0.5 + particleUV.y) * 0.2;
+            float pNoise = valueNoise(particleUV * 15.0);
+            float pMask = smoothstep(0.96, 1.0, pNoise);
+            float pBlink = sin(u_time * 2.0 + uv.x * 20.0) * 0.5 + 0.5;
+            float nightParticleBoost = smoothstep(0.2, -0.2, lightDir.y);
+            float vitalityParticleBoost = u_click.z > 0.0 ? exp(-u_click.z * 0.2) : 0.0;
+            color += vec3(0.5, 1.0, 0.5) * pMask * pBlink * (nightParticleBoost + vitalityParticleBoost) * 1.5;
+
+            // --- CURSOR OVERLAY ---
+            float cursorDist = length(uv - mouseUV);
+            float energyNoise = valueNoise(uv * 100.0 - u_time * 10.0);
+            float cursorRing = smoothstep(0.02, 0.0, cursorDist) * (0.5 + 0.5 * energyNoise);
+            float cursorCore = smoothstep(0.004, 0.0, cursorDist);
+            
+            vec3 cursorColor = mix(vec3(0.3, 0.8, 1.0), vec3(0.6, 1.0, 0.4), max(lightDir.y, 0.0));
+            color += cursorColor * cursorRing;
+            color += vec3(1.0) * cursorCore;
+
+            // --- FINAL OUTPUT ---
+            // Vignette
+            color *= smoothstep(2.0, 0.5, length(uv));
+            
+            gl_FragColor = vec4(ACESFilm(color), 1.0);
+        }
+    </script>
+
+    <script>
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+        const loading = document.getElementById('loading');
+
+        if (!gl) { 
+            loading.innerText = "WebGL not supported on this device.";
+            loading.style.color = "#ff3333";
+        }
+
+        // --- SHADER COMPILATION ---
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const program = gl.createProgram();
+        const vs = createShader(gl, gl.VERTEX_SHADER, document.getElementById('vertexShader').text);
+        const fs = createShader(gl, gl.FRAGMENT_SHADER, document.getElementById('fragmentShader').text);
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Program link failed:', gl.getProgramInfoLog(program));
+        }
+
+        // --- GEOMETRY SETUP ---
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1.0, -1.0,  
+             1.0, -1.0,  
+            -1.0,  1.0,  
+             1.0,  1.0
+        ]), gl.STATIC_DRAW);
+
+        const positionLoc = gl.getAttribLocation(program, 'position');
+        
+        // --- UNIFORMS ---
+        const uniforms = {
+            time: gl.getUniformLocation(program, 'u_time'),
+            res: gl.getUniformLocation(program, 'u_resolution'),
+            mouse: gl.getUniformLocation(program, 'u_mouse'),
+            click: gl.getUniformLocation(program, 'u_click') 
+        };
+
+        // --- STATE & PHYSICS VARIABLES ---
+        let state = {
+            mouseX: window.innerWidth / 2,
+            mouseY: window.innerHeight / 2,
+            targetMouseX: window.innerWidth / 2,
+            targetMouseY: window.innerHeight / 2,
+            clickX: 0,
+            clickY: 0,
+            clickTime: -1.0, // -1 means no active click wave
+            isMouseDown: 0.0
+        };
+
+        // --- EVENT LISTENERS ---
+        window.addEventListener('mousemove', (e) => {
+            state.targetMouseX = e.clientX;
+            state.targetMouseY = window.innerHeight - e.clientY; 
+        });
+
+        window.addEventListener('mousedown', (e) => {
+            state.isMouseDown = 1.0;
+            state.clickX = e.clientX;
+            state.clickY = window.innerHeight - e.clientY;
+            state.clickTime = 0.0; // Trigger the rejuvenation wave
+        });
+
+        window.addEventListener('mouseup', () => {
+            state.isMouseDown = 0.0;
+        });
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        });
+
+        window.dispatchEvent(new Event('resize'));
+        setTimeout(() => { loading.style.opacity = '0'; }, 500);
+
+        // --- RENDER LOOP ---
+        let lastTime = 0;
+        
+        function render(time) {
+            const dt = (time - lastTime) * 0.001;
+            lastTime = time;
+
+            // Physics Calculations (Spring smoothing for organic feel)
+            let dx = state.targetMouseX - state.mouseX;
+            let dy = state.targetMouseY - state.mouseY;
+            state.mouseX += dx * 10.0 * dt;
+            state.mouseY += dy * 10.0 * dt;
+
+            // Rejuvenation wave timing (lasts much longer than the liquid UI)
+            if (state.clickTime >= 0.0) {
+                state.clickTime += dt;
+                // Fade out completely after 15 seconds
+                if (state.clickTime > 15.0) state.clickTime = -1.0; 
+            }
+
+            // WebGL State Update
+            gl.useProgram(program);
+            gl.enableVertexAttribArray(positionLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+            // Send Uniforms
+            gl.uniform1f(uniforms.time, time * 0.001);
+            gl.uniform2f(uniforms.res, canvas.width, canvas.height);
+            gl.uniform2f(uniforms.mouse, state.mouseX, state.mouseY);
+            gl.uniform4f(uniforms.click, state.clickX, state.clickY, state.clickTime, state.isMouseDown);
+
+            // Draw Fullscreen Quad
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

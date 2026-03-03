@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shader Gallery - Interactive WebGL Showcase</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(15, 15, 35, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        h1 {
+            font-size: 2em;
+            font-weight: 700;
+            background: linear-gradient(45deg, #00ffcc, #0099ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .nav-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 255, 204, 0.3);
+        }
+
+        .nav-btn.active {
+            background: linear-gradient(45deg, #00ffcc, #0099ff);
+            border-color: transparent;
+            box-shadow: 0 5px 20px rgba(0, 255, 204, 0.4);
+        }
+
+        .main-container {
+            margin-top: 120px;
+            padding: 20px;
+            max-width: 1400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .shader-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 50px;
+        }
+
+        .shader-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .shader-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 255, 204, 0.2);
+            border-color: rgba(0, 255, 204, 0.3);
+        }
+
+        .shader-preview {
+            width: 100%;
+            height: 250px;
+            position: relative;
+            overflow: hidden;
+            background: #000;
+        }
+
+        .shader-preview iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            transform: scale(0.8);
+            transform-origin: top left;
+            width: 125%;
+            height: 125%;
+        }
+
+        .shader-info {
+            padding: 20px;
+        }
+
+        .shader-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #00ffcc;
+        }
+
+        .shader-description {
+            color: #ccc;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+        }
+
+        .shader-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .tag {
+            background: rgba(0, 255, 204, 0.1);
+            color: #00ffcc;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+
+        .slideshow-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 2000;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .slideshow-container.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .slideshow-content {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .slideshow-header {
+            padding: 20px;
+            background: rgba(15, 15, 35, 0.95);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .slideshow-title {
+            font-size: 1.5em;
+            font-weight: 600;
+        }
+
+        .close-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 67, 54, 0.8);
+            border-color: #ff4336;
+        }
+
+        .slideshow-iframe-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .slideshow-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .slideshow-nav {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            background: rgba(15, 15, 35, 0.95);
+            padding: 15px 30px;
+            border-radius: 50px;
+            backdrop-filter: blur(20px);
+        }
+
+        .slide-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .slide-btn:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .slide-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .slide-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #ccc;
+            font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .controls {
+                justify-content: center;
+            }
+
+            .main-container {
+                margin-top: 180px;
+            }
+
+            .shader-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .slideshow-nav {
+                bottom: 20px;
+                padding: 10px 20px;
+                gap: 15px;
+            }
+
+            .slide-btn {
+                padding: 10px 15px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div>
+                <h1>Shader Gallery</h1>
+                <div class="subtitle">Interactive WebGL Experiments Collection</div>
+            </div>
+            <div class="controls">
+                <button class="nav-btn active" onclick="showView('grid')">Grid View</button>
+                <button class="nav-btn" onclick="showView('slideshow')">Slideshow</button>
+                <button class="nav-btn" onclick="toggleFullscreen()">Fullscreen</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <div class="shader-grid" id="shaderGrid">
+            <!-- Shader cards will be dynamically generated -->
+        </div>
+    </main>
+
+    <div class="slideshow-container" id="slideshowContainer">
+        <div class="slideshow-content">
+            <div class="slideshow-header">
+                <div class="slideshow-title" id="slideshowTitle">Shader Showcase</div>
+                <button class="close-btn" onclick="closeSlideshow()">Close</button>
+            </div>
+            <div class="slideshow-iframe-container">
+                <iframe class="slideshow-iframe" id="slideshowIframe" src=""></iframe>
+            </div>
+            <div class="slideshow-nav">
+                <button class="slide-btn" id="prevBtn" onclick="previousSlide()">← Previous</button>
+                <div class="slide-indicator">
+                    <span id="currentSlide">1</span> / <span id="totalSlides">1</span>
+                </div>
+                <button class="slide-btn" id="nextBtn" onclick="nextSlide()">Next →</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const shaders = [
+            {
+                title: "Mathematical Shader Demo",
+                description: "Interactive background shader with soft colors, rounded corners, and mouse-responsive animations featuring four unique material patterns.",
+                file: "index.html",
+                tags: ["WebGL", "Interactive", "Mathematical"]
+            },
+            {
+                title: "Mango Stack Playground",
+                description: "GPU-powered geometric stack experiment with dynamic color controls and smooth animations.",
+                file: "shaders/2.html",
+                tags: ["GPU", "Geometric", "Interactive"]
+            },
+            {
+                title: "Mango Pulse - Fluid Edition",
+                description: "Viscous flow laboratory with liquid dynamics and heat-based visual effects.",
+                file: "shaders/3.html",
+                tags: ["Fluid", "Dynamics", "Heat"]
+            },
+            {
+                title: "Mango Pulse - Liquid Flow",
+                description: "Advanced liquid simulation with gooey UI effects and interactive controls.",
+                file: "shaders/4.html",
+                tags: ["Liquid", "Gooey", "UI"]
+            },
+            {
+                title: "Mango Pulse - Full Journal",
+                description: "Complete liquid blog interface with organic design and interactive elements.",
+                file: "shaders/5.html",
+                tags: ["Blog", "Journal", "Liquid"]
+            },
+            {
+                title: "Fluid Motion Blog",
+                description: "Modern blog design with GPU-powered background and glassmorphism effects.",
+                file: "shaders/6.html",
+                tags: ["Blog", "Glass", "Modern"]
+            },
+            {
+                title: "LUMINAL - Shader Native",
+                description: "Shader-native blog with procedural typography and infinite scrolling.",
+                file: "shaders/7.html",
+                tags: ["Shader", "Typography", "Infinite"]
+            },
+            {
+                title: "LUMINAL - Interactive",
+                description: "Enhanced shader interface with click interactions and dynamic effects.",
+                file: "shaders/8.html",
+                tags: ["Interactive", "Dynamic", "Shader"]
+            },
+            {
+                title: "LUMINAL - Liquid UI",
+                description: "Advanced liquid and refractive UI with magnetic cursor effects.",
+                file: "shaders/9.html",
+                tags: ["Liquid", "Refractive", "Cursor"]
+            },
+            {
+                title: "Motion GPU Recreation",
+                description: "Pure GPU-powered motion playground recreation with complex mathematical patterns.",
+                file: "shaders/10.html",
+                tags: ["Motion", "GPU", "Mathematical"]
+            },
+            {
+                title: "LUMINAL - Fire & Steam",
+                description: "Thermodynamic shader effects with fire, steam, and boiling interactions.",
+                file: "shaders/11.html",
+                tags: ["Fire", "Steam", "Thermal"]
+            },
+            {
+                title: "Inter-dimensional Void",
+                description: "Entities emerging from and retreating into a void with fluid space warping and neon-pastel colors.",
+                file: "shaders/12.html",
+                tags: ["Void", "Entities", "Warping"]
+            },
+            {
+                title: "LUMINAL - Rebirth",
+                description: "Interactive terrain with day/night cycles, rejuvenation waves, and dynamic ecosystem simulation.",
+                file: "shaders/13.html",
+                tags: ["Terrain", "Ecosystem", "Rebirth"]
+            }
+        ];
+
+        let currentSlideIndex = 0;
+        let currentView = 'grid';
+
+        function initializeGallery() {
+            const grid = document.getElementById('shaderGrid');
+            
+            shaders.forEach((shader, index) => {
+                const card = document.createElement('div');
+                card.className = 'shader-card';
+                card.onclick = () => openSlideshow(index);
+                
+                card.innerHTML = `
+                    <div class="shader-preview">
+                        <iframe src="${shader.file}" loading="lazy"></iframe>
+                    </div>
+                    <div class="shader-info">
+                        <div class="shader-title">${shader.title}</div>
+                        <div class="shader-description">${shader.description}</div>
+                        <div class="shader-tags">
+                            ${shader.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+                
+                grid.appendChild(card);
+            });
+        }
+
+        function openSlideshow(index = 0) {
+            currentSlideIndex = index;
+            const container = document.getElementById('slideshowContainer');
+            const iframe = document.getElementById('slideshowIframe');
+            const title = document.getElementById('slideshowTitle');
+            
+            iframe.src = shaders[currentSlideIndex].file;
+            title.textContent = shaders[currentSlideIndex].title;
+            
+            updateSlideIndicators();
+            container.classList.add('active');
+            currentView = 'slideshow';
+            updateNavButtons();
+        }
+
+        function closeSlideshow() {
+            const container = document.getElementById('slideshowContainer');
+            container.classList.remove('active');
+            currentView = 'grid';
+            updateNavButtons();
+        }
+
+        function nextSlide() {
+            if (currentSlideIndex < shaders.length - 1) {
+                currentSlideIndex++;
+                updateSlideshowContent();
+            }
+        }
+
+        function previousSlide() {
+            if (currentSlideIndex > 0) {
+                currentSlideIndex--;
+                updateSlideshowContent();
+            }
+        }
+
+        function updateSlideshowContent() {
+            const iframe = document.getElementById('slideshowIframe');
+            const title = document.getElementById('slideshowTitle');
+            
+            iframe.src = shaders[currentSlideIndex].file;
+            title.textContent = shaders[currentSlideIndex].title;
+            updateSlideIndicators();
+        }
+
+        function updateSlideIndicators() {
+            document.getElementById('currentSlide').textContent = currentSlideIndex + 1;
+            document.getElementById('totalSlides').textContent = shaders.length;
+            
+            document.getElementById('prevBtn').disabled = currentSlideIndex === 0;
+            document.getElementById('nextBtn').disabled = currentSlideIndex === shaders.length - 1;
+        }
+
+        function showView(view) {
+            if (view === 'slideshow') {
+                openSlideshow(0);
+            } else {
+                closeSlideshow();
+            }
+            updateNavButtons();
+        }
+
+        function updateNavButtons() {
+            const buttons = document.querySelectorAll('.nav-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            
+            if (currentView === 'grid') {
+                buttons[0].classList.add('active');
+            } else {
+                buttons[1].classList.add('active');
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (currentView === 'slideshow') {
+                if (e.key === 'ArrowRight') nextSlide();
+                if (e.key === 'ArrowLeft') previousSlide();
+                if (e.key === 'Escape') closeSlideshow();
+            }
+        });
+
+        // Initialize gallery on load
+        document.addEventListener('DOMContentLoaded', initializeGallery);
+    </script>
+</body>
+</html>
