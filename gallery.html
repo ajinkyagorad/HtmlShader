@@ -477,6 +477,9 @@
                         <div class="shader-tags">
                             ${shader.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
                         </div>
+                        <button class="copy-btn" onclick="copyShaderSource('${shader.file}', '${shader.title}')">
+                            📋 Copy Source
+                        </button>
                     </div>
                 `;
                 
@@ -562,6 +565,43 @@
                 document.documentElement.requestFullscreen();
             } else {
                 document.exitFullscreen();
+            }
+        }
+
+        async function copyShaderSource(file, title) {
+            try {
+                const response = await fetch(file);
+                const sourceCode = await response.text();
+                
+                // Copy to clipboard
+                await navigator.clipboard.writeText(sourceCode);
+                
+                // Show success feedback
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Copied!';
+                btn.classList.add('success');
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('success');
+                }, 2000);
+                
+                console.log(`Copied source code from: ${file}`);
+                
+            } catch (error) {
+                console.error('Failed to copy shader source:', error);
+                
+                // Show error feedback
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '❌ Error';
+                btn.classList.add('error');
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('error');
+                }, 2000);
             }
         }
 

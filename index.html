@@ -3,424 +3,489 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mathematical Shader Demo</title>
+    <title>Fluid Motion UI</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS for rapid UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
     <style>
-        * {
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.4);
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+        }
+
+        body, html {
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
+            width: 100%;
+            font-family: 'Inter', sans-serif;
+            color: #1e293b; /* Slate 800 for contrast against pastel background */
+            background-color: #f0f0f0;
+            overflow-x: hidden;
+            scroll-behavior: smooth;
         }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            overflow: hidden;
-            position: relative;
-        }
-        
+
+        /* Fixed Background Canvas */
         #glCanvas {
             position: fixed;
             top: 0;
             left: 0;
             width: 100vw;
             height: 100vh;
-            z-index: -1;
+            z-index: -1; /* Place behind everything */
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
         }
-        
-        .content {
-            position: relative;
-            z-index: 1;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
+
+        /* Glassmorphism Utilities */
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+        }
+
+        /* Continuous Fluid Floating Animation */
+        @keyframes float-anim {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-15px); }
+        }
+
+        .float-1 { animation: float-anim 6s ease-in-out infinite; }
+        .float-2 { animation: float-anim 7s ease-in-out infinite 1.5s; }
+        .float-3 { animation: float-anim 8s ease-in-out infinite 3s; }
+
+        .glass-card {
+            --card-color: rgba(255, 255, 255, 0.3);
+            --card-hover: rgba(255, 255, 255, 0.4);
+            --card-border: rgba(255, 255, 255, 0.6);
+            --card-shadow-hover: rgba(0, 0, 0, 0.2);
+            
+            background: linear-gradient(135deg, rgba(255,255,255,0.6) 0%, var(--card-color) 100%);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--card-border);
+            box-shadow: 0 10px 40px -10px rgba(0,0,0,0.1);
+            transition: box-shadow 0.4s ease, background 0.4s ease;
+            transform-style: preserve-3d; /* Required for 3D parallax inside the card */
+        }
+
+        .glass-card:hover {
+            box-shadow: 0 30px 60px -15px var(--card-shadow-hover);
+            background: linear-gradient(135deg, rgba(255,255,255,0.7) 0%, var(--card-hover) 100%);
+        }
+
+        /* Card Color Variants */
+        .card-pink {
+            --card-color: rgba(244, 114, 182, 0.25);
+            --card-hover: rgba(244, 114, 182, 0.4);
+            --card-border: rgba(244, 114, 182, 0.5);
+            --card-shadow-hover: rgba(244, 114, 182, 0.3);
+        }
+
+        .card-blue {
+            --card-color: rgba(56, 189, 248, 0.25);
+            --card-hover: rgba(56, 189, 248, 0.4);
+            --card-border: rgba(56, 189, 248, 0.5);
+            --card-shadow-hover: rgba(56, 189, 248, 0.3);
+        }
+
+        .card-yellow {
+            --card-color: rgba(250, 204, 21, 0.25);
+            --card-hover: rgba(250, 204, 21, 0.4);
+            --card-border: rgba(250, 204, 21, 0.5);
+            --card-shadow-hover: rgba(250, 204, 21, 0.3);
+        }
+
+        .glass-button {
+            background: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            transition: all 0.3s ease;
+        }
+
+        .glass-button:hover {
+            background: rgba(255, 255, 255, 0.8);
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+
+        .glass-button:active {
+            transform: scale(0.98);
+        }
+
+        .primary-button {
+            background: rgba(15, 23, 42, 0.8);
             color: white;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-        }
-        
-        .container {
-            text-align: center;
-            padding: 30px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            border-radius: 20px;
-            backdrop-filter: blur(15px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            max-width: 600px;
-        }
-        
-        h1 {
-            margin-bottom: 30px;
-            font-size: 3em;
-            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
-            animation: glow 2s ease-in-out infinite alternate;
-        }
-        
-        @keyframes glow {
-            from { text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5), 0 0 10px rgba(255, 255, 255, 0.3); }
-            to { text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 255, 255, 0.5); }
-        }
-        
-        .card {
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 15px;
-            padding: 20px;
-            margin: 15px 0;
             backdrop-filter: blur(10px);
             transition: all 0.3s ease;
         }
-        
-        .card:hover {
-            background: rgba(255, 255, 255, 0.25);
-            transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-        }
-        
-        .feature-list {
-            list-style: none;
-            padding: 0;
-        }
-        
-        .feature-list li {
-            padding: 8px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        
-        .feature-list li:last-child {
-            border-bottom: none;
-        }
-        
-        .controls {
-            margin-top: 20px;
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        
-        button {
-            padding: 12px 24px;
-            background: rgba(255, 255, 255, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 25px;
-            color: white;
-            font-size: 16px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(5px);
-        }
-        
-        button:hover {
-            background: rgba(255, 255, 255, 0.3);
+
+        .primary-button:hover {
+            background: rgba(15, 23, 42, 0.95);
             transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.3);
         }
-        
-        button.active {
-            background: rgba(255, 255, 255, 0.4);
-            box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+
+        /* Fluid Entrance Animations */
+        .fade-up {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.8s ease-out, transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        
-        .info {
-            margin-top: 20px;
-            padding: 15px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            font-size: 14px;
-            line-height: 1.6;
+
+        .fade-up.visible {
+            opacity: 1;
+            transform: translateY(0);
         }
-        
-        .material-indicator {
-            margin-top: 10px;
-            padding: 8px 16px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 20px;
-            display: inline-block;
-        }
+
+        /* Delay utilities */
+        .delay-100 { transition-delay: 100ms; }
+        .delay-200 { transition-delay: 200ms; }
+        .delay-300 { transition-delay: 300ms; }
     </style>
 </head>
-<body>
-    <canvas id="glCanvas">
-        Your browser does not support WebGL. Please try a modern browser.
-    </canvas>
-    
-    <div class="content">
-        <div class="container">
-            <h1>Mathematical Shader Art</h1>
-            
-            <div class="card">
-                <h2>Interactive Background Shader</h2>
-                <p>This entire page is rendered with a mathematical WebGL shader that creates dynamic, animated backgrounds with soft colors and organic patterns.</p>
-            </div>
-            
-            <div class="card">
-                <h3>Shader Features</h3>
-                <ul class="feature-list">
-                    <li>🌊 Mathematical wave transformations</li>
-                    <li>🎨 Soft color palette with gradients</li>
-                    <li>🔄 Rounded corners with smooth edges</li>
-                    <li>🌑 Dynamic shadow effects</li>
-                    <li>🖱️ Mouse-responsive animations</li>
-                    <li>📐 Four unique material patterns</li>
-                </ul>
-            </div>
-            
-            <div class="controls">
-                <button onclick="changeMaterial(0)" class="material-btn active">Gradient Waves</button>
-                <button onclick="changeMaterial(1)" class="material-btn">Cellular Pattern</button>
-                <button onclick="changeMaterial(2)" class="material-btn">Flowing Curves</button>
-                <button onclick="changeMaterial(3)" class="material-btn">Motion GPU Art</button>
-            </div>
-            
-            <div class="card">
-                <p><strong>Current Material:</strong> <span id="materialName">Gradient Waves</span></p>
-                <p><em>Move your mouse over the page to interact with the shader background!</em></p>
-            </div>
+<body class="antialiased min-h-screen flex flex-col">
+
+    <!-- WebGL Background -->
+    <canvas id="glCanvas"></canvas>
+
+    <!-- Floating Navigation -->
+    <nav class="glass mx-auto mt-6 rounded-full px-6 py-4 flex justify-between items-center w-[90%] max-w-5xl sticky top-6 z-50 fade-up visible">
+        <div class="flex items-center gap-2 font-bold text-xl tracking-tight">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1v2.5M12 21l-2 1M4 7l2 1M4 7v2.5M6 18l-2-1v-2.5M6 18l2-1v-2.5M18 18l2-1v-2.5"></path></svg>
+            MotionUI
         </div>
-    </div>
+        <div class="hidden md:flex gap-8 font-medium text-slate-600">
+            <a href="gallery.html" class="hover:text-slate-900 transition-colors">Gallery</a>
+            <a href="#" class="hover:text-slate-900 transition-colors">Components</a>
+            <a href="#" class="hover:text-slate-900 transition-colors">Animations</a>
+        </div>
+        <div>
+            <a href="gallery.html" class="primary-button px-6 py-2 rounded-full font-medium text-sm">
+                View Gallery
+            </a>
+        </div>
+    </nav>
 
-    <script>
-        let gl, program, positionBuffer, texCoordBuffer;
-        let timeLocation, resolutionLocation, mouseLocation, materialLocation;
-        let startTime = Date.now();
-        let currentMaterial = 0;
-        let mouseX = 0, mouseY = 0;
+    <!-- Main Content -->
+    <main class="flex-grow flex flex-col items-center justify-center w-full px-4 pt-24 pb-32">
+        
+        <!-- Hero Section -->
+        <section class="max-w-4xl w-full text-center mt-12 mb-24">
+            <div class="inline-block glass px-4 py-1.5 rounded-full text-sm font-semibold text-slate-700 mb-6 fade-up visible">
+                ✨ Powered by WebGL & Glassmorphism
+            </div>
+            <h1 class="text-5xl md:text-7xl font-bold tracking-tight text-slate-800 mb-6 leading-tight fade-up visible delay-100">
+                Experience fluid <br/>
+                <span class="text-transparent bg-clip-text bg-gradient-to-r from-slate-600 to-slate-900">digital motion.</span>
+            </h1>
+            <p class="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto mb-10 fade-up visible delay-200">
+                A seamless integration of mathematical shader art and highly responsive, tactile user interface components designed for modern web experiences.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center fade-up visible delay-300">
+                <a href="gallery.html" class="primary-button px-8 py-4 rounded-full font-semibold text-lg flex items-center justify-center gap-2">
+                    Explore Gallery
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+                </a>
+                <button class="glass-button px-8 py-4 rounded-full font-semibold text-lg text-slate-700">
+                    View Documentation
+                </button>
+            </div>
+        </section>
 
-        const materialNames = ['Gradient Waves', 'Cellular Pattern', 'Flowing Curves', 'Motion GPU Art'];
+        <!-- Feature Cards Grid -->
+        <section class="max-w-6xl w-full grid grid-cols-1 md:grid-cols-3 gap-8 px-4">
+            
+            <!-- Card 1 -->
+            <div class="fade-up observer-el float-1">
+                <div class="glass-card card-pink rounded-3xl p-8 h-full flex flex-col">
+                    <div class="w-14 h-14 rounded-2xl glass flex items-center justify-center mb-6 text-pink-600 transform transition-transform duration-300" style="transform: translateZ(40px);">
+                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-3 transform transition-transform duration-300" style="transform: translateZ(30px);">Fluid Dynamics</h3>
+                    <p class="text-slate-600 mb-6 leading-relaxed flex-grow transform transition-transform duration-300" style="transform: translateZ(20px);">
+                        Interfaces that breathe. Every interaction is mathematically smoothed using cubic beziers and physics-based rendering.
+                    </p>
+                    <button class="glass-button w-full py-3 rounded-xl font-medium text-slate-700 flex justify-between items-center px-4 transform transition-transform duration-300" style="transform: translateZ(35px);">
+                        Learn more
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                </div>
+            </div>
 
-        async function loadShader(url) {
-            try {
-                console.log('Loading shader:', url);
-                // Add cache-busting parameter
-                const cacheBuster = '?t=' + Date.now();
-                const response = await fetch(url + cacheBuster);
-                if (!response.ok) {
-                    console.error('Failed to load shader:', url, response.statusText);
-                    return null;
+            <!-- Card 2 -->
+            <div class="fade-up observer-el delay-100 float-2">
+                <div class="glass-card card-blue rounded-3xl p-8 h-full flex flex-col">
+                    <div class="w-14 h-14 rounded-2xl glass flex items-center justify-center mb-6 text-sky-600 transform transition-transform duration-300" style="transform: translateZ(40px);">
+                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-3 transform transition-transform duration-300" style="transform: translateZ(30px);">Glassmorphism</h3>
+                    <p class="text-slate-600 mb-6 leading-relaxed flex-grow transform transition-transform duration-300" style="transform: translateZ(20px);">
+                        Advanced backdrop filters create a frosted glass effect that beautifully diffuses the complex WebGL background.
+                    </p>
+                    <button class="glass-button w-full py-3 rounded-xl font-medium text-slate-700 flex justify-between items-center px-4 transform transition-transform duration-300" style="transform: translateZ(35px);">
+                        Learn more
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Card 3 -->
+            <div class="fade-up observer-el delay-200 float-3">
+                <div class="glass-card card-yellow rounded-3xl p-8 h-full flex flex-col">
+                    <div class="w-14 h-14 rounded-2xl glass flex items-center justify-center mb-6 text-amber-500 transform transition-transform duration-300" style="transform: translateZ(40px);">
+                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-3 transform transition-transform duration-300" style="transform: translateZ(30px);">High Performance</h3>
+                    <p class="text-slate-600 mb-6 leading-relaxed flex-grow transform transition-transform duration-300" style="transform: translateZ(20px);">
+                        GPU-accelerated animations running at 60 frames per second, ensuring your UI never drops a beat during interactions.
+                    </p>
+                    <button class="glass-button w-full py-3 rounded-xl font-medium text-slate-700 flex justify-between items-center px-4 transform transition-transform duration-300" style="transform: translateZ(35px);">
+                        Learn more
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+        </section>
+        
+        <!-- Bottom Banner -->
+        <section class="max-w-6xl w-full mt-20 px-4">
+             <div class="glass-card rounded-3xl p-10 flex flex-col md:flex-row items-center justify-between gap-8 fade-up observer-el">
+                 <div>
+                     <h3 class="text-3xl font-bold mb-2">Ready to transform your UI?</h3>
+                     <p class="text-slate-600 max-w-lg">Bring depth, context, and incredible motion to your next web project seamlessly.</p>
+                 </div>
+                 <a href="gallery.html" class="primary-button px-8 py-4 rounded-full font-semibold text-lg flex-shrink-0">
+                    Explore Shaders
+                 </a>
+             </div>
+        </section>
+
+    </main>
+
+    <!-- Shader Scripts (Exactly as provided) -->
+    <script id="vertexShader" type="x-shader/x-vertex">
+        attribute vec2 position;
+        varying vec2 v_uv;
+        void main() {
+            v_uv = position * 0.5 + 0.5;
+            gl_Position = vec4(position, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        precision highp float;
+        varying vec2 v_uv;
+        uniform float u_time;
+        uniform vec2 u_resolution;
+
+        // Recreating the WGSL-style math in GLSL
+        void main() {
+            vec2 r = u_resolution;
+            // Line 8: let p = vec2f(uv.x * r.x + 0.5, uv.y * r.y + 0.5);
+            vec2 p = v_uv * r + 0.5;
+
+            vec3 h = vec3(0.0);
+            vec3 c = vec3(1.0);
+            float A = 0.0;
+            float l = 0.0;
+            float a = 0.0;
+
+            // Line 16: for (var i = 0.6; i > 0.1; i -= 0.1)
+            for (float i = 0.6; i > 0.05; i -= 0.1) {
+                // Line 17-19: Rotation and oscillation logic
+                a = (u_time + i) * 4.0;
+                a -= sin(a);
+                a -= sin(a);
+
+                // Line 21: let t = cos(a / 4.0 + vec2f(0.0, 1.0));
+                vec2 t = cos(a / 4.0 + vec2(0.0, 1.0));
+                // Line 22: mat2x2f(vec2f(t.x, t.y), vec2f(-t.y, t.x))
+                mat2 R = mat2(t.x, t.y, -t.y, t.x);
+
+                // Line 24: var u = (p * 2.0 - r) / r.y / 0.5;
+                vec2 u = (p * 2.0 - r) / r.y / 0.5;
+                
+                // Cloud distance field logic (Replacing the clamped box)
+                mat2 Rt = mat2(R[0][0], R[1][0], R[0][1], R[1][1]);
+                vec2 ur = Rt * u;
+                
+                // Convert to polar coordinates for cloud bumps
+                float angle = atan(ur.y, ur.x);
+                
+                // Create fluffy, morphing cloud shapes using absolute continuous waves
+                float bump = i * 0.3 * abs(sin(angle * 2.5 + u_time * 0.5)) + 
+                             i * 0.15 * abs(cos(angle * 5.5 - u_time * 0.8));
+                             
+                float r_cloud = i * 0.5 + bump;
+                float len_ur = length(ur);
+                
+                // Calculate distance vector to the bumpy cloud boundary
+                if (len_ur > r_cloud) {
+                    vec2 boundary_pt = (ur / len_ur) * r_cloud;
+                    u -= R * boundary_pt;
+                } else {
+                    u = vec2(0.0); // Inside the cloud
                 }
-                const source = await response.text();
-                console.log('Shader loaded successfully:', url);
-                console.log('Shader source length:', source.length);
-                return source;
-            } catch (error) {
-                console.error('Error loading shader:', url, error);
-                return null;
+
+                // Line 28: l = max(length(u), 0.1);
+                l = max(length(u), 0.1);
+                
+                // Line 29: A = min((l - 0.1) * r.y / 5.0, 1.0);
+                A = min((l - 0.1) * r.y / 5.0, 1.0);
+                
+                // Line 30: h = sin(i * 10.0 + a / 3.0 + vec3f(1.0, 3.0, 5.0)) / 5.0 + 0.8;
+                h = sin(i * 10.0 + a / 3.0 + vec3(1.0, 3.0, 5.0)) / 5.0 + 0.8;
+                
+                // Line 31: Complex color mixing and shadowing
+                c = mix(h, c, A) * mix(vec3(1.0), h + A * u.y / l / 2.0, 0.1 / l);
             }
+
+            // Line 34: return vec4f(tanh(c * c), 1.0);
+            // Recreating tanh approximation for GLSL
+            vec3 c2 = c * c;
+            vec3 result = (exp(c2) - exp(-c2)) / (exp(c2) + exp(-c2));
+            gl_FragColor = vec4(result, 1.0);
+        }
+    </script>
+
+    <!-- App Logic -->
+    <script>
+        // --- Exact WebGL Setup Provided by User ---
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            console.error('WebGL not supported');
         }
 
         function createShader(gl, type, source) {
             const shader = gl.createShader(type);
             gl.shaderSource(shader, source);
             gl.compileShader(shader);
-            
             if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-                console.error('Shader compilation error:', gl.getShaderInfoLog(shader));
+                console.error(gl.getShaderInfoLog(shader));
                 gl.deleteShader(shader);
                 return null;
             }
-            
             return shader;
         }
 
-        function createProgram(gl, vertexShader, fragmentShader) {
-            const program = gl.createProgram();
-            gl.attachShader(program, vertexShader);
-            gl.attachShader(program, fragmentShader);
-            gl.linkProgram(program);
-            
-            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-                console.error('Program linking error:', gl.getProgramInfoLog(program));
-                return null;
-            }
-            
-            return program;
+        const vsSource = document.getElementById('vertexShader').text;
+        const fsSource = document.getElementById('fragmentShader').text;
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error(gl.getProgramInfoLog(program));
         }
 
-        async function init() {
-            const canvas = document.getElementById('glCanvas');
-            console.log('Canvas element:', canvas);
-            
-            // Set canvas size to window size
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            
-            gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-            
-            if (!gl) {
-                console.error('WebGL not supported');
-                alert('WebGL not supported');
-                return;
-            }
-            
-            console.log('WebGL context created successfully');
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, -1,
+             1, -1,
+            -1,  1,
+             1,  1,
+        ]), gl.STATIC_DRAW);
 
-            // Load appropriate shaders based on current material
-            await loadShadersForMaterial(currentMaterial);
+        const positionLocation = gl.getAttribLocation(program, 'position');
+        const timeLocation = gl.getUniformLocation(program, 'u_time');
+        const resolutionLocation = gl.getUniformLocation(program, 'u_resolution');
 
-            // Start render loop
-            render();
-        }
+        function render(time) {
+            time *= 0.001; // Convert to seconds
 
-        async function loadShadersForMaterial(materialIndex) {
-            let vertexSource, fragmentSource;
-            
-            if (materialIndex === 3) {
-                // Load advanced shaders for Motion GPU Art
-                vertexSource = await loadShader('advanced_vertex.glsl');
-                fragmentSource = await loadShader('advanced_fragment.glsl');
-            } else {
-                // Load standard shaders
-                vertexSource = await loadShader('vertex.glsl');
-                fragmentSource = await loadShader('fragment.glsl');
-            }
-            
-            if (!vertexSource || !fragmentSource) {
-                console.error('Failed to load shader files');
-                return false;
-            }
-
-            // Create shaders and program
-            const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexSource);
-            const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
-            
-            if (!vertexShader || !fragmentShader) {
-                console.error('Failed to create shaders');
-                return false;
-            }
-            
-            // Clean up old program if exists
-            if (program) {
-                gl.deleteProgram(program);
-            }
-            
-            program = createProgram(gl, vertexShader, fragmentShader);
-            
-            if (!program) {
-                console.error('Failed to create program');
-                return false;
-            }
-            
-            console.log('Shader program created successfully for material:', materialIndex);
-
-            // Create buffers for full-screen quad
-            positionBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-            const positions = [
-                -1, -1,
-                 1, -1,
-                -1,  1,
-                 1,  1
-            ];
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-
-            texCoordBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
-            const texCoords = [
-                0, 1,
-                1, 1,
-                0, 0,
-                1, 0
-            ];
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texCoords), gl.STATIC_DRAW);
-
-            // Get uniform locations
-            timeLocation = gl.getUniformLocation(program, 'u_time');
-            resolutionLocation = gl.getUniformLocation(program, 'u_resolution');
-            mouseLocation = gl.getUniformLocation(program, 'u_mouse');
-            materialLocation = gl.getUniformLocation(program, 'u_material');
-            
-            return true;
-        }
-
-        async function changeMaterial(materialIndex) {
-            currentMaterial = materialIndex;
-            
-            // Load new shaders for the selected material
-            await loadShadersForMaterial(materialIndex);
-            
-            // Update button states
-            document.querySelectorAll('.material-btn').forEach((btn, index) => {
-                if (index === materialIndex) {
-                    btn.classList.add('active');
-                } else {
-                    btn.classList.remove('active');
-                }
-            });
-            
-            // Update material name
-            document.getElementById('materialName').textContent = materialNames[materialIndex];
-        }
-
-        // Set up mouse tracking for full page
-        document.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = window.innerHeight - e.clientY;
-        });
-
-        // Handle window resize
-        window.addEventListener('resize', () => {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
             gl.viewport(0, 0, canvas.width, canvas.height);
-        });
 
-        // Start render loop
-        render();
-
-        function render() {
-            if (!gl || !program) return;
-
-            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-            gl.clearColor(0, 0, 0, 1);
+            gl.clearColor(0.95, 0.95, 0.95, 1.0);
             gl.clear(gl.COLOR_BUFFER_BIT);
 
             gl.useProgram(program);
 
-            // Set uniforms
-            const time = (Date.now() - startTime) / 1000;
-            gl.uniform1f(timeLocation, time);
-            gl.uniform2f(resolutionLocation, gl.canvas.width, gl.canvas.height);
-            gl.uniform2f(mouseLocation, mouseX, mouseY);
-            gl.uniform1i(materialLocation, currentMaterial);
-
-            // Set up position attribute
-            const positionLocation = gl.getAttribLocation(program, 'a_position');
-            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
             gl.enableVertexAttribArray(positionLocation);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
             gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
-            // Set up texture coordinate attribute
-            const texCoordLocation = gl.getAttribLocation(program, 'a_texCoord');
-            gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
-            gl.enableVertexAttribArray(texCoordLocation);
-            gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0);
+            gl.uniform1f(timeLocation, time);
+            gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
 
-            // Draw
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
             requestAnimationFrame(render);
         }
 
-        function changeMaterial(materialIndex) {
-            currentMaterial = materialIndex;
-            
-            // Update button states
-            document.querySelectorAll('.material-btn').forEach((btn, index) => {
-                if (index === materialIndex) {
-                    btn.classList.add('active');
-                } else {
-                    btn.classList.remove('active');
+        requestAnimationFrame(render);
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // --- UI Interactions ---
+        const observerOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.1
+        };
+
+        const observer = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    observer.unobserve(entry.target);
                 }
             });
-            
-            // Update material name
-            document.getElementById('materialName').textContent = materialNames[materialIndex];
-        }
+        }, observerOptions);
 
-        // Initialize when page loads
-        window.addEventListener('load', init);
+        document.querySelectorAll('.observer-el').forEach(el => {
+            observer.observe(el);
+        });
+
+        // --- 3D Interactive Card Tilt ---
+        const cards = document.querySelectorAll('.glass-card');
+        
+        cards.forEach(card => {
+            card.addEventListener('mousemove', (e) => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+                
+                // Calculate rotation limits (max 12 degrees)
+                const rotateX = ((y - centerY) / centerY) * -12;
+                const rotateY = ((x - centerX) / centerX) * 12;
+                
+                card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+                card.style.transition = 'transform 0.1s ease'; // Fast follow
+            });
+            
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
+                card.style.transition = 'transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)'; // Smooth snap back
+            });
+        });
+
     </script>
 </body>
 </html>
