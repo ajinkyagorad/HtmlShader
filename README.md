@@ -1,8 +1,12 @@
 # Mathematical Shader Demo
 
-A WebGL shader demonstration featuring mathematical patterns, soft color palettes, rounded corners, and interactive materials.
+A WebGL# Shader Gallery - Interactive WebGL Showcase
 
-## Features
+A comprehensive collection of interactive WebGL shader experiments and demonstrations, deployable as GitHub Pages.
+
+*Initially inspired by: https://x.com/madebyhex/status/2027931150635700268?s=20*
+
+## 🎨 Features
 
 ### Mathematical Transformations
 - **Vertex Shader**: Wave transformations using sine and cosine functions
