@@ -72,12 +72,37 @@
             transition: all 0.3s ease;
             font-size: 14px;
             font-weight: 500;
+            position: relative;
+            overflow: hidden;
         }
 
         .nav-btn:hover {
             background: rgba(255, 255, 255, 0.2);
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(0, 255, 204, 0.3);
+        }
+
+        .nav-btn.success {
+            background: linear-gradient(45deg, #00ff88, #00cc66);
+            border-color: transparent;
+            animation: pulse 0.5s ease;
+        }
+
+        .nav-btn.error {
+            background: linear-gradient(45deg, #ff4444, #cc0000);
+            border-color: transparent;
+            animation: shake 0.5s ease;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
         }
 
         .nav-btn.active {
@@ -319,6 +344,7 @@
                 <button class="nav-btn active" onclick="showView('grid')">Grid View</button>
                 <button class="nav-btn" onclick="showView('slideshow')">Slideshow</button>
                 <button class="nav-btn" onclick="toggleFullscreen()">Fullscreen</button>
+                <button class="nav-btn" onclick="copyCurrentShader()">📋 Copy Source</button>
             </div>
         </div>
     </header>
@@ -536,6 +562,53 @@
                 document.documentElement.requestFullscreen();
             } else {
                 document.exitFullscreen();
+            }
+        }
+
+        async function copyCurrentShader() {
+            let shaderFile;
+            
+            if (currentView === 'slideshow') {
+                // Get current slideshow shader
+                shaderFile = shaders[currentSlideIndex].file;
+            } else {
+                // In grid view, copy the first shader as default
+                shaderFile = shaders[0].file;
+            }
+            
+            try {
+                const response = await fetch(shaderFile);
+                const sourceCode = await response.text();
+                
+                // Copy to clipboard
+                await navigator.clipboard.writeText(sourceCode);
+                
+                // Show success feedback
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Copied!';
+                btn.classList.add('success');
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('success');
+                }, 2000);
+                
+                console.log(`Copied source code from: ${shaderFile}`);
+                
+            } catch (error) {
+                console.error('Failed to copy shader source:', error);
+                
+                // Show error feedback
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '❌ Error';
+                btn.classList.add('error');
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('error');
+                }, 2000);
             }
         }
 
