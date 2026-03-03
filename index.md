@@ -2,6 +2,8 @@
 
 Welcome to the Interactive WebGL Shader Gallery!
 
+*Initially inspired by: https://x.com/madebyhex/status/2027931150635700268?s=20*
+
 ## [View Gallery](gallery.html)
 
 Explore our collection of 13+ interactive shader experiments featuring:

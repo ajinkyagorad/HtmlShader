@@ -1,22 +1,10 @@
-# Mathematical Shader Demo
-
-A WebGL# Shader Gallery - Interactive WebGL Showcase
+# Shader Gallery - Interactive WebGL Showcase
 
 A comprehensive collection of interactive WebGL shader experiments and demonstrations, deployable as GitHub Pages.
 
 *Initially inspired by: https://x.com/madebyhex/status/2027931150635700268?s=20*
 
 ## 🎨 Features
-
-### Mathematical Transformations
-- **Vertex Shader**: Wave transformations using sine and cosine functions
-- **Dynamic Movement**: Time-based animations with mathematical functions
-- **Rounded Corners**: Smooth corner rounding with distance calculations
-
-### Soft Color Palette
-
-### Viewing Locally
-1. Clone this repository
 2. Start a local server:
    ```bash
    # Using Python
